@@ -1,6 +1,6 @@
 import { mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
-import { isDirKind, type Artifact, type Kind } from '../artifact.js';
+import { filesWithIdAsName, isDirKind, type Artifact, type Kind } from '../artifact.js';
 
 export interface InstallResult {
   installed: string[];
@@ -129,6 +129,10 @@ async function realish(p: string): Promise<string> {
  *
  * Returns the path written, which is a directory for skills and a file for
  * commands and agents.
+ *
+ * The primary markdown's frontmatter `name` is rewritten to the artifact's id,
+ * so an installed artifact agrees with the name it was installed under. The
+ * source file is untouched.
  */
 export async function writeArtifact(
   artifact: Artifact,
@@ -139,7 +143,7 @@ export async function writeArtifact(
     const dest = join(kindDir, artifact.id);
     if (dryRun) return dest;
     await rm(dest, { recursive: true, force: true });
-    for (const f of artifact.files) {
+    for (const f of filesWithIdAsName(artifact)) {
       const out = join(dest, f.path);
       await mkdir(dirname(out), { recursive: true });
       await writeFile(out, f.bytes);
@@ -150,6 +154,6 @@ export async function writeArtifact(
   const dest = join(kindDir, `${artifact.id}.md`);
   if (dryRun) return dest;
   await mkdir(kindDir, { recursive: true });
-  await writeFile(dest, artifact.files[0]!.bytes);
+  await writeFile(dest, filesWithIdAsName(artifact)[0]!.bytes);
   return dest;
 }

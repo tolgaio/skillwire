@@ -125,7 +125,9 @@ commands/review.md               ->  review
 
 Targets install into one flat directory, so a hierarchy has to flatten. Using the basename alone would collide — one real repo has four different skills called `default` — and silently overwrite. The full path is unique by construction and says where the thing came from.
 
-The id is what you filter on, and what a skill is called once installed.
+The id is what you filter on, and what a skill is called once installed. The
+installed copy's frontmatter `name` is rewritten to match it, so a file never
+contradicts the directory it sits in — your source files are not modified.
 
 ## Configuration
 
@@ -353,7 +355,7 @@ Skills and agents, into a Multica workspace over its API.
 
 **Skills** are packaged as a zip and uploaded with `skill import --file`, not `--url`. The URL form records an origin and enables `skill refresh`, but that import runs **server-side** — the backend fetches the URL itself, so it only works for repos the backend can read. Uploading bytes needs no credentials, which is what makes private skill repos work. The trade-off: a `--file` import records no origin, so `skill refresh` can't re-pull it. Re-running skillwire is the refresh.
 
-Multica keys skills on the `name` in their frontmatter rather than on where they came from, so skillwire **rewrites that field to the id** when packaging. Without it, two skills declaring the same name overwrite each other however distinct their paths were, and nested skills lose their prefix. Only the uploaded copy is changed; the file on disk is untouched.
+Multica keys skills on the `name` in their frontmatter rather than on where they came from. skillwire rewrites that field to the id for every target, but here it is load-bearing rather than cosmetic: without it, two skills declaring the same name overwrite each other however distinct their paths were, and nested skills lose their prefix entirely.
 
 **Agents** map to `agent create` / `agent update`, since Multica has no file import for them. Only `name`, `description` and `instructions` are sent — runtime, model, MCP config and skill assignments are set in the UI and aren't expressible in an agent file, so writing them would silently revert choices you made elsewhere. `--runtime-id` is mandatory on create and is a workspace-specific UUID, so it comes from `agentRuntime` as a runtime *name*; without it, agents are skipped rather than guessed at. Claude's `tools:` frontmatter has no equivalent and is dropped.
 

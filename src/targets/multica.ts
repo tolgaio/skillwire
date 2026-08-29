@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { withName, type Artifact, type Kind } from '../artifact.js';
+import { filesWithIdAsName, type Artifact, type Kind } from '../artifact.js';
 import { zip } from '../zip.js';
 import {
   partitionByKind,
@@ -304,20 +304,11 @@ export class MulticaTarget implements Target {
           continue;
         }
 
-        // Force the declared name to the artifact id. Multica keys skills on
-        // the frontmatter name, so without this two skills from different
-        // directories that happen to declare the same name silently overwrite
-        // each other — and nested skills lose their path prefix entirely.
-        await writeFile(
-          archive,
-          zip(
-            s.files.map((f) =>
-              f.path === 'SKILL.md'
-                ? { path: f.path, bytes: Buffer.from(withName(f.bytes.toString('utf8'), s.id), 'utf8') }
-                : { path: f.path, bytes: f.bytes },
-            ),
-          ),
-        );
+        // Multica keys skills on the frontmatter name rather than on any path,
+        // so this is not merely cosmetic here: without it two skills declaring
+        // the same name overwrite each other, and nested skills lose their
+        // prefix entirely.
+        await writeFile(archive, zip(filesWithIdAsName(s)));
 
         try {
           await run(this.bin, [

@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import type { Artifact, Kind } from '../artifact.js';
+import { parseFrontmatter, type Artifact, type Kind } from '../artifact.js';
 import { assertNotInsideSource, partitionByKind } from './base.js';
 import { FilesystemTarget } from './filesystem.js';
 
@@ -37,8 +37,64 @@ test('installs skills as directories and commands as files', async () => {
   const root = await scratch();
   try {
     await target(root).install([artifact('one'), artifact('two', 'command')], {});
-    assert.equal(await readFile(join(root, 'skills/one/SKILL.md'), 'utf8'), 'body');
-    assert.equal(await readFile(join(root, 'commands/two.md'), 'utf8'), 'body');
+    assert.match(await readFile(join(root, 'skills/one/SKILL.md'), 'utf8'), /body/);
+    assert.match(await readFile(join(root, 'commands/two.md'), 'utf8'), /body/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('the installed primary file declares the id as its name', async () => {
+  // An artifact installed as work-pdf-export must not claim to be pdf-export: a
+  // harness preferring the declared name over the location would otherwise
+  // reintroduce the collisions flattening exists to prevent.
+  const root = await scratch();
+  try {
+    const a: Artifact = {
+      ...artifact('work-pdf-export'),
+      files: [{ path: 'SKILL.md', bytes: Buffer.from('---\nname: pdf-export\ndescription: d\n---\nbody\n') }],
+    };
+    await target(root).install([a], {});
+    const out = await readFile(join(root, 'skills/work-pdf-export/SKILL.md'), 'utf8');
+    const { meta } = parseFrontmatter(out);
+    assert.equal(meta.name, 'work-pdf-export');
+    assert.equal(meta.description, 'd', 'other frontmatter must survive');
+    assert.match(out, /body/, 'the body must survive');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('supporting files are copied untouched', async () => {
+  const root = await scratch();
+  try {
+    const bytes = Buffer.from([0x00, 0x01, 0xfe, 0xff]);
+    const a: Artifact = {
+      ...artifact('one'),
+      files: [
+        { path: 'SKILL.md', bytes: Buffer.from('---\nname: one\n---\nb\n') },
+        { path: 'bin/blob', bytes },
+      ],
+    };
+    await target(root).install([a], {});
+    assert.deepEqual(await readFile(join(root, 'skills/one/bin/blob')), bytes);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a command file also gets its name rewritten', async () => {
+  const root = await scratch();
+  try {
+    const a: Artifact = {
+      ...artifact('team-review', 'command'),
+      files: [{ path: 'team-review.md', bytes: Buffer.from('---\nname: review\n---\nb\n') }],
+    };
+    await target(root).install([a], {});
+    const { meta } = parseFrontmatter(
+      await readFile(join(root, 'commands/team-review.md'), 'utf8'),
+    );
+    assert.equal(meta.name, 'team-review');
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -83,7 +139,7 @@ test('reinstalling replaces rather than merging', async () => {
     await t.install([artifact('one', 'skill', 'v2')], {});
     const files = await readdir(join(root, 'skills/one'));
     assert.deepEqual(files, ['SKILL.md']);
-    assert.equal(await readFile(join(root, 'skills/one/SKILL.md'), 'utf8'), 'v2');
+    assert.match(await readFile(join(root, 'skills/one/SKILL.md'), 'utf8'), /v2/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

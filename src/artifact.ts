@@ -201,6 +201,36 @@ export function withName(raw: string, name: string): string {
   return raw.slice(0, headStart) + `name: ${name}\n` + block + rest;
 }
 
+/**
+ * The file that carries an artifact's frontmatter: SKILL.md for a skill, the
+ * single .md for a command or agent.
+ */
+export function primaryFile(a: Artifact): string {
+  return isDirKind(a.kind) ? 'SKILL.md' : a.files[0]!.path;
+}
+
+/**
+ * Return an artifact's files with the primary markdown's frontmatter `name`
+ * set to the artifact's id.
+ *
+ * The id is the artifact's identity in skillwire — it is what gets installed,
+ * what filters match, and what a target calls it. A file that declares a
+ * different name contradicts the directory it sits in, and any harness that
+ * prefers the declared name over the location would reintroduce exactly the
+ * collisions flattening exists to prevent: two `pdf-export` skills from different
+ * sources both claiming to be `pdf-export`.
+ *
+ * Only the installed copy is affected. The file on disk is never modified.
+ */
+export function filesWithIdAsName(a: Artifact): ArtifactFile[] {
+  const primary = primaryFile(a);
+  return a.files.map((f) =>
+    f.path === primary
+      ? { path: f.path, bytes: Buffer.from(withName(f.bytes.toString('utf8'), a.id), 'utf8') }
+      : f,
+  );
+}
+
 export async function isSkillDir(dir: string): Promise<boolean> {
   try {
     return (await stat(join(dir, 'SKILL.md'))).isFile();

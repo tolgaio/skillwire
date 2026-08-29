@@ -27,6 +27,18 @@ Three things count as breaking, all of them user-visible:
 
 ### Changed
 
+- **An installed artifact now declares its id as its frontmatter `name`.**
+  Previously only Multica did this, because it keys on that field; filesystem
+  targets copied files verbatim, so a skill installed as `work-pdf-export` still
+  declared `name: pdf-export`. The id is the artifact's identity — it is what gets
+  installed, what filters match, and what a target calls it — and a file
+  claiming otherwise contradicts the directory it sits in. Any harness that
+  preferred the declared name over the location would have reintroduced exactly
+  the collisions flattening exists to prevent.
+
+  Source files are never modified; only the installed copy. Supporting files are
+  still copied byte for byte.
+
 - Filter matching moved out of the CLI into `src/filter.ts` so it can be tested
   directly. No behaviour change.
 
