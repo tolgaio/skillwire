@@ -8,23 +8,17 @@ You keep skills in a git repo. skillwire installs them *natively* into each agen
 npx skillwire install
 ```
 
-- [Why](#why) · [Install](#install) · [Quick start](#quick-start)
+- [Why](#why) · [Supported harnesses](#supported-harnesses) · [Install](#install) · [Quick start](#quick-start)
 - [Concepts](#concepts): [wires](#wires) · [kinds](#kinds) · [ids](#ids)
 - [Configuration](#configuration) · [Filtering](#filtering) · [CLI](#cli)
-- [Targets](#targets) · [Safety](#safety) · [Adding a target](#adding-a-target) · [Troubleshooting](#troubleshooting)
+- [Targets](#targets) · [Safety](#safety) · [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing) — adding a target for your harness
 
 ## Why
 
 Because not every agent reads a directory, and the ones that do don't agree on the shape.
 
-| target | destination | shape |
-|---|---|---|
-| Claude Code | `~/.claude/{skills,commands,agents}/` | flat trees |
-| pi | `~/.pi/agent/{skills,prompts}/` | flat trees |
-| Hermes | `~/.hermes/skills/<category>/` | grouped, with `DESCRIPTION.md` |
-| Multica | PostgreSQL, via its API | zip uploaded through its CLI |
-
-Other tools model a target as *a path to copy into*. That covers three of those four. Multica stores skills in a database, so it can't be expressed that way at all — which is why a skillwire target is a **behaviour**, not a path:
+Other tools model a target as *a path to copy into*. That covers most harnesses, but not all — Multica stores skills in a database, so it cannot be expressed that way at all. A skillwire target is therefore a **behaviour**, not a path:
 
 ```ts
 interface Target {
@@ -33,6 +27,32 @@ interface Target {
 ```
 
 Anything that can accept a skill can be a target: an API, a database, a container, a remote host.
+
+## Supported harnesses
+
+| target | kinds | destination | status |
+|---|---|---|---|
+| `claude` | skill, command, agent | `~/.claude/{skills,commands,agents}/` | **used in anger** |
+| `multica` | skill, agent | PostgreSQL, via its CLI | **used in anger** |
+| `pi` | skill, command | `~/.pi/agent/{skills,prompts}/` | implemented, not yet exercised |
+| `hermes` | skill | `~/.hermes/skills/<category>/` | implemented, not yet exercised |
+
+"Implemented, not yet exercised" means the code runs and reports correctly under
+`--dry-run`, but has never written a file in earnest. Treat those two as
+unproven and use `--dry-run` first.
+
+### Not yet implemented
+
+Plenty of harnesses read the same `SKILL.md` convention and would each be a
+small adapter. None of these exist yet:
+
+Cursor · Codex · opencode · Gemini CLI · GitHub Copilot · Windsurf · Zed ·
+Kiro · Qwen · Amp · Goose · Roo · Trae · Droid · Kimi · OpenClaw ·
+Antigravity · CodeBuddy
+
+Most are a directory and a naming convention — see [adding a target](#adding-a-target).
+If you use one of these, a pull request adding it is very welcome; you do not
+need to be able to test the others.
 
 ## Install
 
@@ -360,35 +380,6 @@ For **Multica** it only deletes skills **you** created, checked against `skill.c
 
 Deleting a Multica skill also drops its agent assignments. There's no way to remove one without the other, which is why prune is opt-in.
 
-## Adding a target
-
-Implement `Target` and register it in `src/config.ts`:
-
-```ts
-export class MyTarget implements Target {
-  readonly id = 'mine';
-  readonly name = 'My Agent';
-  readonly kinds: Kind[] = ['skill'];
-
-  async detect(): Promise<boolean> {
-    return true;                       // is this agent present on this machine?
-  }
-
-  async install(artifacts: Artifact[], opts: InstallOptions): Promise<InstallResult> {
-    const { accepted, result } = partitionByKind(artifacts, this.kinds, this.name);
-    for (const a of accepted) {
-      if (!opts.dryRun) { /* ...however your agent takes it... */ }
-      result.installed.push(a.id);
-    }
-    return result;
-  }
-}
-```
-
-There's no requirement to be a filesystem. If you write files, call `assertNotInsideSource()` first and use `writeArtifact()`, which handles the directory-vs-file distinction between kinds.
-
-Honour `opts.dryRun` — it's the flag people reach for before doing something destructive.
-
 ## Troubleshooting
 
 **`no config found`** — skillwire looked for `skillwire.config.json` and `.skillwire.json` in the working directory and `~/.config/skillwire/`. Pass `-c`.
@@ -404,6 +395,109 @@ Honour `opts.dryRun` — it's the flag people reach for before doing something d
 **An artifact vanished, or `--prune` deleted more than expected** — two wires sharing a target with no `prefix`. Ids collide across sources, and each wire's prune only knows its own artifacts. Give at least one wire a prefix.
 
 **Multica: `runtime "X" not found`** — `agentRuntime` must match a name from `multica runtime list` exactly, and runtimes are workspace-specific.
+
+## Contributing
+
+The most useful contribution is **a target for a harness you actually use.**
+skillwire supports four; there are a couple of dozen more, and each is largely a
+directory and a naming convention. You don't need to own the other harnesses to
+add one — CI covers Linux and macOS on Node 20, 22 and 24, and the test suite
+uses fixtures rather than real installations.
+
+Bug reports about the two unexercised targets (`pi`, `hermes`) are especially
+welcome, since nobody has yet run them for real.
+
+### Adding a target
+
+A target implements one interface:
+
+```ts
+export class MyTarget implements Target {
+  readonly id = 'mine';
+  readonly name = 'My Harness';
+  readonly kinds: Kind[] = ['skill', 'command'];
+
+  async detect(): Promise<boolean> {
+    // Is this harness present on this machine? Usually: does its config
+    // directory exist? Returning false makes skillwire skip it with a note
+    // rather than fail.
+    return existsSync(join(homedir(), '.myharness'));
+  }
+
+  async install(artifacts: Artifact[], opts: InstallOptions): Promise<InstallResult> {
+    const { accepted, result } = partitionByKind(artifacts, this.kinds, this.name);
+    for (const a of accepted) {
+      if (!opts.dryRun) { /* however your harness takes it */ }
+      result.installed.push(a.id);
+    }
+    return result;
+  }
+}
+```
+
+Then register it in `src/config.ts`'s `buildTarget`.
+
+If your harness stores skills as flat directories of files — most do —
+`FilesystemTarget` already does the work, and the whole target is a couple of
+lines:
+
+```ts
+export const myHarness = () =>
+  new FilesystemTarget('mine', 'My Harness', {
+    skill: '~/.myharness/skills',
+    command: '~/.myharness/prompts',
+  });
+```
+
+Four things to get right, in rough order of how much damage getting them wrong does:
+
+1. **Honour `opts.dryRun`.** It is the flag people reach for before doing
+   something destructive, and it must write nothing at all.
+2. **Call `assertNotInsideSource()` before writing.** Symlinking a harness's
+   skills directory at the source repo is a common setup, and without this check
+   installing rewrites the user's repository in place.
+3. **Use `partitionByKind()`** so kinds your harness cannot take are reported
+   rather than silently dropped.
+4. **Honour `opts.pruneScope`** if you implement pruning. Several wires can feed
+   one target, and each knows only its own artifacts.
+
+`writeArtifact()` handles the directory-versus-file distinction between kinds,
+so prefer it over writing files yourself.
+
+### Adding something other than a filesystem
+
+`install()` is deliberately a behaviour rather than a path, so a target can be
+an API, a database, a message queue, a remote host. `src/targets/multica.ts` is
+the worked example: it packages each artifact as a zip and uploads it through a
+CLI, maps a second kind onto a completely different API call, and bounds its
+prune to objects the current user created because the destination is shared.
+
+If your destination has no concept of one of the kinds, leave it out of `kinds`
+rather than inventing a mapping — `pi` takes no agents for exactly this reason.
+
+### Running the tests
+
+```bash
+npm install
+npm test          # builds, then runs the suite
+npm run typecheck
+```
+
+Tests live beside the code as `*.test.ts` and use Node's built-in runner with
+fixtures in a temp directory — no network, no real harnesses, no fixtures
+checked into the repo.
+
+If you are changing anything that installs or deletes, add a test for it. The
+suite is weighted that way on purpose: the risky paths are prune, the
+containment guard, and id derivation, because a mistake in any of them is
+silent and destructive.
+
+### What counts as a breaking change
+
+See [RELEASES.md](RELEASES.md). Note that **changing how ids are derived is
+breaking** even though it is not an API change: ids are what gets installed, so
+changing the scheme orphans everything already installed, which the next
+`--prune` then deletes.
 
 ## Releases
 
