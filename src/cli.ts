@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
-import { buildSource, buildTarget, expandPath, loadConfig, type Wire } from './config.js';
+import { buildSource, buildTarget, loadConfig, type Wire } from './config.js';
 import { KINDS, type Artifact, type Kind } from './artifact.js';
 import { selectArtifacts } from './filter.js';
 import { previouslyInstalled, readManifest, record, writeManifest } from './manifest.js';
@@ -28,7 +28,8 @@ Options
       --wire <name>     only this wire (repeatable)
       --target <id>     only this target (repeatable)
       --dry-run         report what would happen, write nothing
-      --prune           remove skills at the target that are absent from the source
+      --prune           remove artifacts this wire installed and no longer produces
+      --no-fetch        use the cached clone of a git source without updating it
 `;
 
 interface Args {
@@ -38,16 +39,26 @@ interface Args {
   targets: string[];
   kinds: Kind[];
   dryRun: boolean;
+  noFetch: boolean;
   prune: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { cmd: 'help', wires: [], targets: [], kinds: [], dryRun: false, prune: false };
+  const a: Args = {
+    cmd: 'help',
+    wires: [],
+    targets: [],
+    kinds: [],
+    dryRun: false,
+    prune: false,
+    noFetch: false,
+  };
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i]!;
     if (v === '--dry-run') a.dryRun = true;
     else if (v === '--prune') a.prune = true;
+    else if (v === '--no-fetch') a.noFetch = true;
     else if (v === '--wire') a.wires.push(argv[++i]!);
     else if (v === '--target') a.targets.push(argv[++i]!);
     else if (v === '--kind') a.kinds.push(argv[++i]! as Kind);
@@ -106,6 +117,19 @@ async function main(): Promise<number> {
 
   for (const wire of wires) {
     const source = buildSource(wire.source);
+    let sourceRoot: string;
+    try {
+      sourceRoot = await source.prepare({
+        fetch: !args.noFetch,
+        onProgress: (m) => console.log(`\n${c.bold(wire.name)}  ${c.dim(m)}`),
+      });
+    } catch (err) {
+      failed = true;
+      console.log(
+        `\n${c.bold(wire.name)}  ${c.red('fail')}  ${err instanceof Error ? err.message : String(err)}`,
+      );
+      continue;
+    }
     const all = await source.read(wire.kinds ?? KINDS);
     let skills = selectArtifacts(all, wire);
     if (args.kinds.length) skills = skills.filter((s) => args.kinds.includes(s.kind));
@@ -152,7 +176,7 @@ async function main(): Promise<number> {
           dryRun: args.dryRun,
           prune: args.prune,
           previouslyInstalled: previouslyInstalled(manifest, wire.name, target.id),
-          sourceRoot: expandPath(wire.source.path),
+          sourceRoot,
         });
         // Record what this wire now owns at this target, so a later run can
         // prune artifacts it stops producing — including ones whose ids changed

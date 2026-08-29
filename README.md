@@ -125,6 +125,12 @@ commands/review.md               ->  review
 
 Targets install into one flat directory, so a hierarchy has to flatten. Using the basename alone would collide — one real repo has four different skills called `default` — and silently overwrite. The full path is unique by construction and says where the thing came from.
 
+When a source holds kind directories in more than one place — with
+[`layout: auto`](#layout) or [`paths`](#scanning-only-part-of-a-repo) — the path
+leading up to the kind directory joins the id too, so
+`plugins/tools/skills/publish` is `plugins-tools-publish`. Ids are always
+relative to the source root.
+
 The id is what you filter on, and what a skill is called once installed. The
 installed copy's frontmatter `name` is rewritten to match it, so a file never
 contradicts the directory it sits in — your source files are not modified.
@@ -142,6 +148,12 @@ contradicts the directory it sits in — your source files are not modified.
       "kinds": ["skill", "command"],
       "exclude": ["skill:vendored-*"],
       "targets": ["claude", "pi"]
+    },
+    {
+      "name": "anthropic",
+      "prefix": "anthropic",
+      "source": { "git": "anthropics/skills" },
+      "targets": ["claude"]
     },
     {
       "name": "work",
@@ -171,37 +183,118 @@ contradicts the directory it sits in — your source files are not modified.
 
 ### Source
 
+A source is either a directory on this machine or a git repository. Everything
+after that point is identical — a cloned repo *is* a directory, so ids,
+filtering, prefixes and prune behave exactly the same either way.
+
 | field | default | meaning |
 |---|---|---|
-| `path` | — | **repo root**, not the skills directory |
-| `layout` | `flat` | `flat` or `nested` |
+| `path` | — | a directory on this machine. **Repo root**, not the skills directory |
+| `git` | — | a repository to clone. `owner/name`, or any URL git accepts |
+| `ref` | default branch | branch, tag or commit. `git` sources only |
+| `layout` | `flat` / `auto` | `flat`, `nested` or `auto` |
+| `paths` | whole repo | subdirectories to scan |
 | `dirs` | see below | override the subdirectory for a kind |
 
-`path` points at the repo, and each kind is read from a subdirectory of it — `skills/`, `commands/`, `agents/`. A repo missing one of those simply contributes nothing for that kind.
+Exactly one of `path` and `git`.
 
-**`flat`** — kinds directly under the root. Most skill repos:
+#### Local
+
+```json
+"source": { "path": "~/src/my-skills" }
+```
+
+Each kind is read from a subdirectory of the root — `skills/`, `commands/`,
+`agents/`. A repo missing one simply contributes nothing for that kind. A path
+that does not exist is an error, not an empty read.
+
+#### From a repository
+
+```json
+"source": { "git": "owner/name" }
+"source": { "git": "owner/name", "ref": "v2" }
+"source": { "git": "git@github.com:owner/private.git" }
+"source": { "git": "gitlab.com/owner/name" }
+```
+
+`owner/name` means GitHub. Anything else is passed to git as written, so any
+host works.
+
+The repo is cloned — shallow, since only its current state matters — into
+`~/.cache/skillwire/repos/` (or `$XDG_CACHE_HOME`), and updated on each run.
+`--no-fetch` skips the network and reads what is already cached. The cache is
+skillwire's; it resets and cleans the tree on every fetch, so a force-push or a
+changed `ref` cannot leave a stale artifact behind to be installed.
+
+> **Authentication is git's own.** An SSH URL uses your SSH key; an https URL
+> uses your credential helper, which `gh auth setup-git` installs. skillwire
+> never takes, stores or logs a token. If you do put one in the URL, it is
+> redacted from every message skillwire prints — but a credential helper is the
+> better answer.
+
+#### Layout
+
+**`flat`** — kinds directly under the root. Most skill repos, and the default
+for a local `path`:
 
 ```
 my-repo/skills/pdf-export/SKILL.md
 my-repo/commands/review.md
 ```
 
-**`nested`** — one grouping level first, the Claude Code plugin-marketplace layout:
+**`nested`** — one grouping level first, the Claude Code plugin-marketplace
+layout:
 
 ```
 my-repo/plugins/tools/skills/style-guide/SKILL.md
                 └── group ──┘
 ```
 
-The group travels with each artifact, so targets that organise by category (Hermes) use it and targets that don't ignore it. Point `path` at `plugins/`.
+The group travels with each artifact, so targets that organise by category
+(Hermes) use it and targets that don't ignore it. Point the root at `plugins/`.
 
-Skills nested deeper are still found, at any depth — see [ids](#ids).
+**`auto`** — find the kind directories wherever they are. The default for a
+`git` source, because a repo you are pointing at is not necessarily a repo you
+laid out:
 
-**`dirs`** renames a kind's subdirectory:
+```
+my-repo/skills/deploy/SKILL.md                ->  deploy
+my-repo/.claude/skills/review/SKILL.md        ->  claude-review
+my-repo/plugins/tools/skills/publish/SKILL.md ->  plugins-tools-publish
+```
+
+All three at once is normal, and `auto` takes all three. It stops at a kind
+directory and never walks into a skill, so a skill shipping its own
+`commands/` directory contributes its files to that skill rather than commands
+to the repo. `.git` and `node_modules` are never walked, and the search gives up
+five levels down — use `paths` for anything deeper.
+
+Skills nested below a kind directory are found at any depth in every layout —
+see [ids](#ids).
+
+#### Scanning only part of a repo
+
+```json
+"source": { "git": "owner/monorepo", "paths": ["packages/web", "packages/api"] }
+```
+
+**Ids stay relative to the repo root**, not to the scan path, so
+`packages/web/skills/deploy` is `packages-web-deploy`. That means adding or
+removing a `paths` entry never renames anything else, and two paths that each
+hold a `deploy` skill give you two distinct skills instead of one silently
+overwriting the other.
+
+A path that climbs out of the source is refused.
+
+#### `dirs`
+
+Renames a kind's subdirectory:
 
 ```json
 "source": { "path": "~/src/my-skills", "dirs": { "command": "prompts" } }
 ```
+
+It applies to `auto` too — that is the name `auto` goes looking for.
 
 ### Namespacing a source
 
@@ -302,7 +395,8 @@ skillwire targets             show which targets are present on this machine
 | `--target <id>` | only this target. Repeatable |
 | `--kind <k>` | only this kind. Repeatable |
 | `--dry-run` | report what would happen, write nothing |
-| `--prune` | also remove artifacts at the target that are absent from the source |
+| `--prune` | remove artifacts this wire installed and no longer produces |
+| `--no-fetch` | use the cached clone of a git source without updating it |
 
 **Always `--dry-run` before `--prune`.** Prune deletes, and a mistaken filter is much cheaper to notice in a report than after the fact.
 
@@ -405,6 +499,10 @@ Deleting a Multica skill also drops its agent assignments. There's no way to rem
 **An artifact vanished** — two wires sharing a target with no `prefix`. Ids collide across sources, so whichever wire runs last overwrites the other. Give at least one wire a prefix.
 
 **Old copies survived a rename** — artifacts installed before skillwire started keeping a manifest have no record, so prune cannot reach them. Remove them once by hand; everything installed since is tracked.
+
+**A git source fails to clone** — skillwire runs `git` and shows what it said. A private repo needs credentials git can find: an SSH URL with your key loaded, or an https URL with a credential helper (`gh auth setup-git`). Try `git clone <the same URL>` by hand — if that fails, skillwire will too.
+
+**A git source found nothing** — the default layout for a repo is `auto`, which looks for directories named `skills`, `commands` and `agents`. If the repo calls them something else, use `dirs`; if they are more than five levels down, point `paths` closer.
 
 **Multica: `runtime "X" not found`** — `agentRuntime` must match a name from `multica runtime list` exactly, and runtimes are workspace-specific.
 

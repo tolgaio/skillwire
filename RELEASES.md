@@ -20,6 +20,35 @@ Three things count as breaking, all of them user-visible:
 
 ### Added
 
+- **Git sources.** A wire can read from a repository instead of a local
+  directory:
+
+  ```json
+  "source": { "git": "owner/name", "ref": "v2" }
+  ```
+
+  `owner/name` means GitHub; anything else is passed to git as written, so any
+  host works. Authentication is git's own — an SSH key or a credential helper —
+  and skillwire never takes, stores or logs a token. Clones are shallow, cached
+  under `~/.cache/skillwire/repos/`, and reset on every fetch so a force-push
+  cannot strand a stale artifact. `--no-fetch` reads the cache without the
+  network.
+
+  A cloned repo is then read exactly as a directory is, so ids, filtering,
+  prefixes and prune are unchanged.
+
+- **`layout: "auto"`**, which finds the kind directories wherever they are —
+  at the root, under `.claude/`, one per plugin, or all three at once. It is the
+  default for a git source, since a repo you point at is not necessarily one you
+  laid out. It stops at a kind directory and never walks into a skill, so a
+  skill shipping its own `commands/` does not contribute commands to the repo.
+
+- **`paths`**, scanning only part of a source. Ids stay relative to the source
+  root rather than to the scan path, so adding an entry never renames anything
+  else, and two paths that each hold a `deploy` skill produce two distinct ids
+  instead of one overwriting the other. A path that climbs out of the source is
+  refused.
+
 - Test suite covering the ZIP writer, frontmatter parsing, source discovery and
   id derivation, filter matching, the manifest, and the filesystem target
   including its prune and containment behaviour.
@@ -48,6 +77,10 @@ Three things count as breaking, all of them user-visible:
   Previously the prefix was the only thing standing between one wire's prune and
   another wire's work; a wire without a prefix pruned everything it did not
   recognise.
+
+- **A source directory that does not exist is now an error** rather than an
+  empty read. A typo was previously indistinguishable from a repo with nothing
+  in it — and with `--prune`, the difference is everything the wire installed.
 
 - State is written to `~/.local/state/skillwire/manifest.json`, honouring
   `XDG_STATE_HOME`. This is the first file skillwire keeps outside its targets.
