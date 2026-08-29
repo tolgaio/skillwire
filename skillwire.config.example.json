@@ -1,0 +1,18 @@
+{
+  "wires": [
+    {
+      "name": "personal",
+      "source": { "path": "~/src/my-skills", "layout": "flat" },
+      "targets": ["claude", "pi"]
+    },
+    {
+      "name": "work",
+      "source": { "path": "~/src/team-skills/plugins", "layout": "nested" },
+      "targets": [
+        "claude",
+        { "id": "hermes", "defaultCategory": "work" },
+        { "id": "multica", "workspace": "work", "onConflict": "overwrite" }
+      ]
+    }
+  ]
+}

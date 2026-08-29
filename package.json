@@ -1,0 +1,22 @@
+{
+  "name": "skillwire",
+  "version": "0.1.0",
+  "description": "Push Agent Skills from one source of truth into every agent that can use them — including ones that aren't filesystems.",
+  "keywords": ["agent-skills", "claude-code", "skills", "ai-agents", "mcp"],
+  "license": "MIT",
+  "type": "module",
+  "bin": { "skillwire": "dist/cli.js" },
+  "files": ["dist"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "node --test dist/**/*.test.js",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
