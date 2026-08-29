@@ -23,9 +23,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/cli.ts",
-    "test": "npm run build && node --test \"dist/**/*.test.js\"",
+    "test": "npm run build && node --test dist/*.test.js dist/targets/*.test.js",
     "prepublishOnly": "npm run build",
-    "test:watch": "node --test --watch \"dist/**/*.test.js\"",
+    "test:watch": "node --test --watch dist/*.test.js dist/targets/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
