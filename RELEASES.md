@@ -16,6 +16,22 @@ Three things count as breaking, all of them user-visible:
 
 ---
 
+## Unreleased
+
+### Added
+
+- Test suite covering the ZIP writer, frontmatter parsing, source discovery and
+  id derivation, filter matching, and the filesystem target including its prune
+  and containment behaviour.
+- CI on Linux and macOS, Node 20/22/24.
+
+### Changed
+
+- Filter matching moved out of the CLI into `src/filter.ts` so it can be tested
+  directly. No behaviour change.
+
+---
+
 ## 0.0.1 — 2026-08-29
 
 First tagged release.
