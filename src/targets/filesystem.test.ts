@@ -156,12 +156,15 @@ test('dry run writes nothing', async () => {
   }
 });
 
-test('prune removes what is absent from the source', async () => {
+test('prune removes what was installed before and is not installed now', async () => {
   const root = await scratch();
   try {
     const t = target(root);
     await t.install([artifact('keep'), artifact('drop')], {});
-    await t.install([artifact('keep')], { prune: true });
+    await t.install([artifact('keep')], {
+      prune: true,
+      previouslyInstalled: ['skill:keep', 'skill:drop'],
+    });
     assert.deepEqual(await readdir(join(root, 'skills')), ['keep']);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -173,42 +176,71 @@ test('prune leaves everything alone in a dry run', async () => {
   try {
     const t = target(root);
     await t.install([artifact('keep'), artifact('drop')], {});
-    await t.install([artifact('keep')], { prune: true, dryRun: true });
+    await t.install([artifact('keep')], {
+      prune: true,
+      dryRun: true,
+      previouslyInstalled: ['skill:keep', 'skill:drop'],
+    });
     assert.deepEqual((await readdir(join(root, 'skills'))).sort(), ['drop', 'keep']);
+    // and it says so, rather than reporting a deletion that did not happen
+    const res = await t.install([artifact('keep')], {
+      prune: true,
+      dryRun: true,
+      previouslyInstalled: ['skill:keep', 'skill:drop'],
+    });
+    assert.match(res.skipped[0]!.reason, /^would prune/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test('pruneScope confines prune to one namespace', async () => {
-  // Two wires installing into one target: each knows only its own artifacts, so
-  // an unscoped prune would have the second delete the first's work.
+test('prune never touches another wire\'s artifacts', async () => {
+  // Each wire's manifest lists only its own ids, so a second wire installing
+  // into the same target cannot delete the first wire's work.
   const root = await scratch();
   try {
     const t = target(root);
     await t.install([artifact('alpha-one'), artifact('beta-one')], {});
-    await t.install([artifact('alpha-one')], { prune: true, pruneScope: 'alpha-' });
+    await t.install([artifact('alpha-one')], {
+      prune: true,
+      previouslyInstalled: ['skill:alpha-one'],
+    });
     assert.deepEqual((await readdir(join(root, 'skills'))).sort(), ['alpha-one', 'beta-one']);
-
-    // and within its own namespace it still prunes
-    await t.install([artifact('alpha-two')], { prune: true, pruneScope: 'alpha-' });
-    assert.deepEqual((await readdir(join(root, 'skills'))).sort(), ['alpha-two', 'beta-one']);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test('an empty source does not prune', async () => {
-  // Deliberate. Prune runs per kind, over the kinds the source produced, so a
-  // source that yields nothing removes nothing. A misconfigured path is far
-  // more likely than a genuine intent to delete everything, and the failure
-  // modes are not comparable.
+test('prune reaches artifacts whose ids changed, e.g. after adding a prefix', async () => {
+  // The case prefix-scoped pruning could not handle: once a wire gains a
+  // prefix, its previously installed ids no longer match, and without a record
+  // of them they would be stranded forever.
+  const root = await scratch();
+  try {
+    const t = target(root);
+    await t.install([artifact('one'), artifact('two')], {});
+    await t.install([artifact('p-one'), artifact('p-two')], {
+      prune: true,
+      previouslyInstalled: ['skill:one', 'skill:two'],
+    });
+    assert.deepEqual((await readdir(join(root, 'skills'))).sort(), ['p-one', 'p-two']);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('prune with no record does nothing', async () => {
+  // No manifest entry means skillwire has no idea what it put here, so it
+  // removes nothing rather than guessing from the directory listing.
   const root = await scratch();
   try {
     const t = target(root);
     await t.install([artifact('one'), artifact('two')], {});
     await t.install([], { prune: true });
     assert.deepEqual((await readdir(join(root, 'skills'))).sort(), ['one', 'two']);
+    // but with a record, an empty source does prune what it used to own
+    await t.install([], { prune: true, previouslyInstalled: ['skill:one'] });
+    assert.deepEqual(await readdir(join(root, 'skills')), ['two']);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -267,4 +299,36 @@ test('allows a target that does not exist yet', async () => {
 
 test('no source root means no containment check', async () => {
   await assertNotInsideSource('/anywhere', undefined, 'Test');
+});
+
+test('prune keeps kinds apart', async () => {
+  // A skill and a command may share an id. Dropping one from the source must
+  // not take the other with it.
+  const root = await scratch();
+  try {
+    const t = target(root);
+    await t.install([artifact('deploy'), artifact('deploy', 'command')], {});
+    await t.install([artifact('deploy', 'command')], {
+      prune: true,
+      previouslyInstalled: ['skill:deploy', 'command:deploy'],
+    });
+    await assert.rejects(() => readdir(join(root, 'skills/deploy')));
+    assert.deepEqual(await readdir(join(root, 'commands')), ['deploy.md']);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a record for a kind the target does not take is ignored', async () => {
+  // pi takes no agents. A manifest entry for one must not send prune looking
+  // for a directory the target has no path for.
+  const root = await scratch();
+  try {
+    const t = target(root);
+    await t.install([artifact('one')], {});
+    await t.install([artifact('one')], { prune: true, previouslyInstalled: ['agent:one'] });
+    assert.deepEqual(await readdir(join(root, 'skills')), ['one']);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

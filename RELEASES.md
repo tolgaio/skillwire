@@ -21,11 +21,37 @@ Three things count as breaking, all of them user-visible:
 ### Added
 
 - Test suite covering the ZIP writer, frontmatter parsing, source discovery and
-  id derivation, filter matching, and the filesystem target including its prune
-  and containment behaviour.
+  id derivation, filter matching, the manifest, and the filesystem target
+  including its prune and containment behaviour.
 - CI on Linux and macOS, Node 20/22/24.
 
+### Fixed
+
+- **`--prune` could not remove artifacts whose ids had changed.** Prune was
+  scoped to a wire's prefix, so anything installed under a *previous* naming
+  fell outside the scope and became unreachable: adding a prefix to an existing
+  wire installed a second, complete copy of everything and left the first behind
+  with no way to clean it up. Changing the source layout had the same effect.
+
+  skillwire now records what each wire installed at each target, and prunes the
+  difference between that record and the current run. A rename is just "these
+  ids are no longer produced", so the old set is removed.
+
+  Artifacts installed before this release have no record and so cannot be
+  pruned; remove them once by hand.
+
 ### Changed
+
+- **Prune is bounded by what skillwire installed, not by what is absent from the
+  source.** Artifacts belonging to another wire, installed by hand, or shipped
+  by the harness are never removed, and prune with no record does nothing.
+  Previously the prefix was the only thing standing between one wire's prune and
+  another wire's work; a wire without a prefix pruned everything it did not
+  recognise.
+
+- State is written to `~/.local/state/skillwire/manifest.json`, honouring
+  `XDG_STATE_HOME`. This is the first file skillwire keeps outside its targets.
+  Deleting it is safe — skillwire reinstalls, but forgets what it may clean up.
 
 - **An installed artifact now declares its id as its frontmatter `name`.**
   Previously only Multica did this, because it keys on that field; filesystem

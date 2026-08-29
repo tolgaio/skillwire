@@ -1,4 +1,4 @@
-import { readdir, rm, stat } from 'node:fs/promises';
+import { rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { isDirKind, type Artifact, type Kind } from '../artifact.js';
@@ -57,7 +57,18 @@ export class FilesystemTarget implements Target {
     const byKind = new Map<Kind, Artifact[]>();
     for (const a of accepted) byKind.set(a.kind, [...(byKind.get(a.kind) ?? []), a]);
 
-    for (const [kind, group] of byKind) {
+    // Prune has to visit kinds the source no longer produces at all — dropping
+    // the last skill from a wire must still remove the skills it left behind —
+    // so the loop covers every kind with either current or recorded artifacts.
+    const previously = new Map<Kind, string[]>();
+    for (const entry of opts.previouslyInstalled ?? []) {
+      const [kind, ...rest] = entry.split(':');
+      if (!this.kinds.includes(kind as Kind)) continue;
+      previously.set(kind as Kind, [...(previously.get(kind as Kind) ?? []), rest.join(':')]);
+    }
+
+    for (const kind of new Set([...byKind.keys(), ...previously.keys()])) {
+      const group = byKind.get(kind) ?? [];
       const root = this.dir(kind);
       await assertNotInsideSource(root, opts.sourceRoot, `${this.name} ${kind}s`);
 
@@ -67,21 +78,24 @@ export class FilesystemTarget implements Target {
       }
 
       if (opts.prune) {
-        const keep = new Set(group.map((a) => (isDirKind(kind) ? a.id : `${a.id}.md`)));
-        let existing: string[] = [];
-        try {
-          existing = (await readdir(root, { withFileTypes: true }))
-            .filter((e) => (isDirKind(kind) ? e.isDirectory() : e.isFile()))
-            .filter((e) => !e.name.startsWith('.'))
-            .map((e) => e.name);
-        } catch {
-          /* nothing installed yet */
-        }
-        for (const name of existing) {
-          if (keep.has(name)) continue;
-          if (opts.pruneScope && !name.startsWith(opts.pruneScope)) continue;
-          if (!opts.dryRun) await rm(join(root, name), { recursive: true, force: true });
-          result.skipped.push({ id: `${kind}:${name}`, reason: 'pruned (not in source)' });
+        // Remove what this wire installed last time and is not installing now.
+        // Reading the directory instead would sweep up other wires' work and
+        // anything installed by hand.
+        const keep = new Set(group.map((a) => a.id));
+        for (const id of previously.get(kind) ?? []) {
+          if (keep.has(id)) continue;
+          const name = isDirKind(kind) ? id : `${id}.md`;
+          const path = join(root, name);
+          try {
+            await stat(path);
+          } catch {
+            continue; // already gone
+          }
+          if (!opts.dryRun) await rm(path, { recursive: true, force: true });
+          result.skipped.push({
+            id: `${kind}:${id}`,
+            reason: opts.dryRun ? 'would prune (no longer in source)' : 'pruned (no longer in source)',
+          });
         }
       }
     }

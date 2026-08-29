@@ -13,13 +13,22 @@ export interface InstallOptions {
   /** Remove artifacts present at the target but absent from the source. */
   prune?: boolean;
   /**
-   * Restrict prune to ids beginning with this string.
+   * What this wire installed at this target on its last run, from the manifest,
+   * as `kind:id` entries.
    *
-   * Set when a wire has a prefix. Several wires can install into one target,
-   * and each only knows its own artifacts — unscoped, the second wire's prune
-   * would delete the first wire's work.
+   * Qualified by kind because an id is only unique within one: a repo may hold
+   * both a skill and a command called `deploy`, and dropping one must not prune
+   * the other.
+   *
+   * Prune removes exactly the ids that were installed before and are not being
+   * installed now. Anything absent from this list was not put here by this
+   * wire, so it is left alone — that covers other wires, artifacts installed by
+   * hand, and a harness's own bundled content.
+   *
+   * When it is undefined there is no record, so prune does nothing rather than
+   * guessing.
    */
-  pruneScope?: string;
+  previouslyInstalled?: string[];
   /**
    * Absolute path the artifacts were read from. Filesystem targets use it to
    * refuse writing into their own source — see assertNotInsideSource.

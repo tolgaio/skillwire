@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { buildSource, buildTarget, expandPath, loadConfig, type Wire } from './config.js';
 import { KINDS, type Artifact, type Kind } from './artifact.js';
 import { selectArtifacts } from './filter.js';
+import { previouslyInstalled, readManifest, record, writeManifest } from './manifest.js';
 import type { Target } from './targets/base.js';
 
 const c = {
@@ -101,6 +102,7 @@ async function main(): Promise<number> {
   }
 
   let failed = false;
+  let manifest = await readManifest();
 
   for (const wire of wires) {
     const source = buildSource(wire.source);
@@ -149,12 +151,18 @@ async function main(): Promise<number> {
         const res = await target.install(skills, {
           dryRun: args.dryRun,
           prune: args.prune,
-          // Scope prune to this wire's namespace. Without it, a second wire
-          // installing into the same target would delete the first wire's
-          // artifacts, since they are absent from its own source.
-          pruneScope: wire.prefix ? `${wire.prefix.replace(/-+$/, '')}-` : undefined,
+          previouslyInstalled: previouslyInstalled(manifest, wire.name, target.id),
           sourceRoot: expandPath(wire.source.path),
         });
+        // Record what this wire now owns at this target, so a later run can
+        // prune artifacts it stops producing — including ones whose ids changed
+        // because a prefix was added or the layout moved.
+        if (!args.dryRun) {
+          const owned = skills
+            .filter((a) => target.kinds.includes(a.kind))
+            .map((a) => `${a.kind}:${a.id}`);
+          manifest = record(manifest, wire.name, target.id, owned);
+        }
         const verb = args.dryRun ? c.yellow('would') : c.green('ok   ');
         console.log(`  ${verb}    ${target.id}  ${res.installed.length} installed`);
         for (const s of res.skipped) {
@@ -168,6 +176,8 @@ async function main(): Promise<number> {
       }
     }
   }
+
+  if (!args.dryRun) await writeManifest(manifest);
 
   return failed ? 1 : 0;
 }

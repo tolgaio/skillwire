@@ -233,12 +233,16 @@ export class MulticaTarget implements Target {
     // the id, so the id is what a remote skill is called. Using a.name here
     // inverts the result — it would prune what was just installed and keep the
     // orphans.
+    // Only ids this wire installed before and is not installing now. Ownership
+    // is still checked below: a shared workspace can contain a skill with the
+    // same name created by someone else.
     const keep = new Set(installed.map((a) => a.id));
+    const previously = new Set(opts.previouslyInstalled ?? []);
     let foreign = 0;
 
     for (const r of remote) {
       if (keep.has(r.name)) continue;
-      if (opts.pruneScope && !r.name.startsWith(opts.pruneScope)) continue;
+      if (!previously.has(`skill:${r.name}`)) continue;
       if (r.created_by !== me) {
         foreign++;
         continue;

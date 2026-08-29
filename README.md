@@ -219,13 +219,13 @@ Every id from that wire becomes `work-<id>` — `work-pdf-export` alongside your
 The prefix is applied **after** `only` and `exclude`, so patterns match ids as
 they appear in the repo rather than the prefixed form.
 
-It also scopes `--prune`. Several wires can install into one target, and each
-knows only its own artifacts; unscoped, the second wire's prune would delete the
-first wire's work. With a prefix, prune only considers ids in that namespace.
+Adding or changing a prefix renames every artifact the wire installs. The
+artifacts under the old names are not left stranded: skillwire records what each
+wire installed, so the next `--prune` removes them. See
+[Prune is bounded](#prune-is-bounded).
 
 > **If two wires share a target, give at least one of them a prefix.** Without
-> one, overlapping ids overwrite each other, and `--prune` will have each wire
-> remove the other's artifacts.
+> one, overlapping ids overwrite each other on every run.
 
 ## Filtering
 
@@ -376,7 +376,15 @@ Both paths are resolved through symlinks before comparing, because the whole pro
 
 ### Prune is bounded
 
-For filesystem targets, `--prune` removes artifacts in the target directory that aren't in the source.
+`--prune` removes only what skillwire itself installed and is no longer installing. It does not remove everything at the target that is absent from the source.
+
+Each run records the artifacts each wire installed at each target, in `~/.local/state/skillwire/manifest.json` (or `$XDG_STATE_HOME/skillwire/`). Prune deletes exactly the difference between that record and the current run. So:
+
+- artifacts from **another wire**, or installed **by hand**, or shipped by the harness itself, are never touched — they were never recorded
+- artifacts whose **ids changed** — because a prefix was added, or the source layout moved — are still removed, even though nothing about their new names would identify them
+- with **no record** (first run, or a deleted manifest) prune does nothing, rather than guessing from the directory listing
+
+Delete the manifest and skillwire forgets what it owns; it will reinstall, but it can no longer clean up what it left behind.
 
 For **Multica** it only deletes skills **you** created, checked against `skill.created_by`. A workspace is shared, so "not in my source" doesn't mean "unwanted" — a colleague's skill, or one authored in the web UI, survives and is reported instead. Agents are never pruned: Multica archives rather than deletes them, which is better done deliberately.
 
@@ -394,7 +402,9 @@ Deleting a Multica skill also drops its agent assignments. There's no way to rem
 
 **Skills installed but never used by Claude Code** — you're probably over the skill-listing budget; see [claude](#claude--claude-code).
 
-**An artifact vanished, or `--prune` deleted more than expected** — two wires sharing a target with no `prefix`. Ids collide across sources, and each wire's prune only knows its own artifacts. Give at least one wire a prefix.
+**An artifact vanished** — two wires sharing a target with no `prefix`. Ids collide across sources, so whichever wire runs last overwrites the other. Give at least one wire a prefix.
+
+**Old copies survived a rename** — artifacts installed before skillwire started keeping a manifest have no record, so prune cannot reach them. Remove them once by hand; everything installed since is tracked.
 
 **Multica: `runtime "X" not found`** — `agentRuntime` must match a name from `multica runtime list` exactly, and runtimes are workspace-specific.
 
@@ -460,8 +470,10 @@ Four things to get right, in rough order of how much damage getting them wrong d
    installing rewrites the user's repository in place.
 3. **Use `partitionByKind()`** so kinds your harness cannot take are reported
    rather than silently dropped.
-4. **Honour `opts.pruneScope`** if you implement pruning. Several wires can feed
-   one target, and each knows only its own artifacts.
+4. **Prune only what is in `opts.previouslyInstalled`** if you implement
+   pruning. It lists what this wire put here last time, as `kind:id`. Anything
+   else at the destination belongs to someone else. When it is empty, prune
+   nothing.
 
 `writeArtifact()` handles the directory-versus-file distinction between kinds,
 so prefer it over writing files yourself.
