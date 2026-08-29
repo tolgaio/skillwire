@@ -3,18 +3,19 @@
     {
       "name": "personal",
       "source": { "path": "~/src/my-skills", "layout": "flat" },
+      "exclude": ["skill:vendored-*"],
       "targets": ["claude", "pi"]
     },
     {
-      "name": "work",
+      "name": "team",
       "source": { "path": "~/src/team-skills/plugins", "layout": "nested" },
       "kinds": ["skill", "command"],
       "targets": [
         "claude",
-        { "id": "hermes", "defaultCategory": "work" },
+        { "id": "hermes", "defaultCategory": "team" },
         {
           "id": "multica",
-          "workspace": "work",
+          "workspace": "team",
           "onConflict": "overwrite",
           "agentRuntime": "Claude (myhost)"
         }

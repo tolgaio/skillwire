@@ -78,7 +78,8 @@ function matches(id: string, pattern: string): boolean {
  *
  * The scoped form matters more than it looks. Excluding a skill collection by
  * prefix will otherwise catch unrelated commands and agents that happen to
- * share the prefix — a `vendored-import` command is not a vendored skill.
+ * share it — a `vendored-import` command is not part of the vendored skill
+ * collection.
  */
 function matchesArtifact(a: Artifact, pattern: string): boolean {
   const i = pattern.indexOf(':');
