@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFile } from 'node:fs/promises';
 import { buildSource, buildTarget, expandPath, loadConfig, type Wire } from './config.js';
 import { KINDS, type Artifact, type Kind } from './artifact.js';
 import type { Target } from './targets/base.js';
@@ -20,6 +21,7 @@ ${c.bold('skillwire')} — push Agent Skills from one source into every agent th
 
 Options
   -c, --config <path>   config file (default: ./skillwire.config.json)
+  -V, --version         print the version and exit
       --kind <k>        only this kind: skill | command | agent (repeatable)
       --wire <name>     only this wire (repeatable)
       --target <id>     only this target (repeatable)
@@ -49,6 +51,7 @@ function parseArgs(argv: string[]): Args {
     else if (v === '--kind') a.kinds.push(argv[++i]! as Kind);
     else if (v === '-c' || v === '--config') a.config = argv[++i]!;
     else if (v === '-h' || v === '--help') a.cmd = 'help';
+    else if (v === '-V' || v === '--version') a.cmd = 'version';
     else rest.push(v);
   }
   if (rest[0]) a.cmd = rest[0];
@@ -105,6 +108,16 @@ async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
   if (args.cmd === 'help') {
     console.log(USAGE);
+    return 0;
+  }
+
+  if (args.cmd === 'version') {
+    // Read at runtime rather than baked in at build, so the reported version
+    // cannot drift from the package that is actually installed.
+    const pkg = JSON.parse(
+      await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { version: string };
+    console.log(pkg.version);
     return 0;
   }
 

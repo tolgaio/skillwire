@@ -405,6 +405,14 @@ Honour `opts.dryRun` — it's the flag people reach for before doing something d
 
 **Multica: `runtime "X" not found`** — `agentRuntime` must match a name from `multica runtime list` exactly, and runtimes are workspace-specific.
 
+## Releases
+
+Version history, what each release was verified against, and current known
+limitations: [RELEASES.md](RELEASES.md).
+
+skillwire is `0.x` — breaking changes can land in a minor bump, and are called
+out there.
+
 ## License
 
 MIT
