@@ -13,6 +13,14 @@ export interface InstallOptions {
   /** Remove artifacts present at the target but absent from the source. */
   prune?: boolean;
   /**
+   * Restrict prune to ids beginning with this string.
+   *
+   * Set when a wire has a prefix. Several wires can install into one target,
+   * and each only knows its own artifacts — unscoped, the second wire's prune
+   * would delete the first wire's work.
+   */
+  pruneScope?: string;
+  /**
    * Absolute path the artifacts were read from. Filesystem targets use it to
    * refuse writing into their own source — see assertNotInsideSource.
    */

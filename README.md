@@ -141,6 +141,7 @@ The id is what you filter on, and what a skill is called once installed.
 | `kinds` | array | which kinds to wire. Default: all three |
 | `only` | array | install only ids matching these patterns |
 | `exclude` | array | never install ids matching these patterns |
+| `prefix` | string | namespace this wire's ids as `<prefix>-<id>` |
 
 ### Source
 
@@ -175,6 +176,30 @@ Skills nested deeper are still found, at any depth — see [ids](#ids).
 ```json
 "source": { "path": "~/src/my-skills", "dirs": { "command": "prompts" } }
 ```
+
+### Namespacing a source
+
+Ids are unique *within* a source but not across sources. Two repos can each hold
+a `pdf-export` skill, and without a prefix the second wire installed silently
+overwrites the first.
+
+```json
+{ "name": "work", "prefix": "work", "source": { "path": "~/src/team-skills/plugins" }, "targets": ["claude"] }
+```
+
+Every id from that wire becomes `work-<id>` — `work-pdf-export` alongside your own
+`pdf-export`.
+
+The prefix is applied **after** `only` and `exclude`, so patterns match ids as
+they appear in the repo rather than the prefixed form.
+
+It also scopes `--prune`. Several wires can install into one target, and each
+knows only its own artifacts; unscoped, the second wire's prune would delete the
+first wire's work. With a prefix, prune only considers ids in that namespace.
+
+> **If two wires share a target, give at least one of them a prefix.** Without
+> one, overlapping ids overwrite each other, and `--prune` will have each wire
+> remove the other's artifacts.
 
 ## Filtering
 

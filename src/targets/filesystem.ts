@@ -79,6 +79,7 @@ export class FilesystemTarget implements Target {
         }
         for (const name of existing) {
           if (keep.has(name)) continue;
+          if (opts.pruneScope && !name.startsWith(opts.pruneScope)) continue;
           if (!opts.dryRun) await rm(join(root, name), { recursive: true, force: true });
           result.skipped.push({ id: `${kind}:${name}`, reason: 'pruned (not in source)' });
         }

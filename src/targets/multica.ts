@@ -238,6 +238,7 @@ export class MulticaTarget implements Target {
 
     for (const r of remote) {
       if (keep.has(r.name)) continue;
+      if (opts.pruneScope && !r.name.startsWith(opts.pruneScope)) continue;
       if (r.created_by !== me) {
         foreign++;
         continue;

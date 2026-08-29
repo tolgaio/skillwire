@@ -139,6 +139,11 @@ async function main(): Promise<number> {
     const all = await source.read(wire.kinds ?? KINDS);
     let skills = selectArtifacts(all, wire);
     if (args.kinds.length) skills = skills.filter((s) => args.kinds.includes(s.kind));
+    // After filtering, so patterns match ids as they appear in the repo.
+    if (wire.prefix) {
+      const pre = wire.prefix.replace(/-+$/, '');
+      skills = skills.map((s) => ({ ...s, id: `${pre}-${s.id}` }));
+    }
 
     console.log(
       `\n${c.bold(wire.name)}  ${c.dim(source.name)}  ${skills.length} item${skills.length === 1 ? '' : 's'}` +
@@ -176,6 +181,10 @@ async function main(): Promise<number> {
         const res = await target.install(skills, {
           dryRun: args.dryRun,
           prune: args.prune,
+          // Scope prune to this wire's namespace. Without it, a second wire
+          // installing into the same target would delete the first wire's
+          // artifacts, since they are absent from its own source.
+          pruneScope: wire.prefix ? `${wire.prefix.replace(/-+$/, '')}-` : undefined,
           sourceRoot: expandPath(wire.source.path),
         });
         const verb = args.dryRun ? c.yellow('would') : c.green('ok   ');

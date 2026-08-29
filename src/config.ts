@@ -28,6 +28,17 @@ export interface Wire {
   targets: TargetConfig[];
   /** Which kinds to wire. Defaults to all of them. */
   kinds?: Kind[];
+  /**
+   * Prepended to every id from this wire, as `<prefix>-<id>`.
+   *
+   * Ids are unique within a source but not across sources — two repos can each
+   * hold a `pdf-export` skill, and without a prefix the second wire installed
+   * silently overwrites the first. A prefix namespaces a whole source.
+   *
+   * Applied after `only`/`exclude`, so filters match the id as it appears in
+   * the repo rather than the prefixed form.
+   */
+  prefix?: string;
   /** Install only ids matching these patterns. `*` is a wildcard. Omit for all. */
   only?: string[];
   /** Never install ids matching these patterns. `*` is a wildcard. */
