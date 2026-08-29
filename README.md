@@ -64,6 +64,9 @@ skillwire install           # do it
 
 ### Wires
 
+Both wires above install into `claude`, which is why the second carries a
+`prefix` — see [namespacing](#namespacing-a-source).
+
 A **wire** connects one source to many targets. That's the unit of work, and the tool's name.
 
 ```json
@@ -120,6 +123,7 @@ The id is what you filter on, and what a skill is called once installed.
     },
     {
       "name": "work",
+      "prefix": "work",
       "source": { "path": "~/src/team-skills/plugins", "layout": "nested" },
       "targets": [
         "claude",
@@ -396,6 +400,8 @@ Honour `opts.dryRun` — it's the flag people reach for before doing something d
 **A filter caught more than intended** — an unscoped pattern applies to every kind. Use `skill:pattern` to restrict it.
 
 **Skills installed but never used by Claude Code** — you're probably over the skill-listing budget; see [claude](#claude--claude-code).
+
+**An artifact vanished, or `--prune` deleted more than expected** — two wires sharing a target with no `prefix`. Ids collide across sources, and each wire's prune only knows its own artifacts. Give at least one wire a prefix.
 
 **Multica: `runtime "X" not found`** — `agentRuntime` must match a name from `multica runtime list` exactly, and runtimes are workspace-specific.
 

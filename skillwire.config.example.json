@@ -8,6 +8,7 @@
     },
     {
       "name": "team",
+      "prefix": "team",
       "source": { "path": "~/src/team-skills/plugins", "layout": "nested" },
       "kinds": ["skill", "command"],
       "targets": [
