@@ -19,10 +19,25 @@ export interface Source {
 /** Per-kind subdirectory names, relative to the source root. */
 export type KindDirs = Partial<Record<Kind, string>>;
 
+/**
+ * Read every artifact of one kind under `dir`, recursing to any depth.
+ *
+ * An artifact's id is its full path within the kind root, dash-joined:
+ *
+ *   skills/pdf-export/               -> pdf-export
+ *   skills/writing/tone-check/       -> writing-tone-check
+ *   skills/vendored/rewrite/default/ -> vendored-rewrite-default
+ *
+ * Targets install artifacts as direct children of one directory, so a
+ * hierarchy has to flatten. Using the basename alone would collide — this repo
+ * has four different skills called `default` — and silently overwrite. The full
+ * path is unique by construction and says where the thing came from.
+ */
 async function readKindDir(
   kind: Kind,
   dir: string,
   group?: string,
+  prefix = '',
 ): Promise<Artifact[]> {
   let entries;
   try {
@@ -36,10 +51,24 @@ async function readKindDir(
     if (e.name.startsWith('.')) continue;
     const full = join(dir, e.name);
     if (isDirKind(kind)) {
-      if (e.isDirectory() && (await isSkillDir(full)))
-        out.push(await readSkillDir(full, group));
+      if (!e.isDirectory()) continue;
+      const id = prefix + e.name;
+      if (await isSkillDir(full)) {
+        out.push(await readSkillDir(full, group, id));
+        continue;
+      }
+      // A directory without SKILL.md may still be a collection holding skills
+      // one level down — repos mix flat skills with grouped ones. Look inside
+      // rather than dropping them silently. A directory that yields nothing is
+      // simply not skills, and needs no comment.
+      out.push(...(await readKindDir(kind, full, group ?? e.name, `${id}-`)));
     } else if (e.isFile() && e.name.toLowerCase().endsWith('.md')) {
-      out.push(await readFileArtifact(kind, full, group));
+      out.push(
+        await readFileArtifact(kind, full, group, prefix + e.name.replace(/\.md$/i, '')),
+      );
+    } else if (e.isDirectory()) {
+      // commands and agents can be filed in subdirectories too
+      out.push(...(await readKindDir(kind, full, group, `${prefix}${e.name}-`)));
     }
   }
   return out;

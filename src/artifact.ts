@@ -130,8 +130,17 @@ function build(
   };
 }
 
-/** Read a skill directory. Throws when it has no SKILL.md — that is the marker. */
-export async function readSkillDir(dir: string, group?: string): Promise<Artifact> {
+/**
+ * Read a skill directory. Throws when it has no SKILL.md — that is the marker.
+ *
+ * `id` is supplied by the source rather than derived from the directory name,
+ * because a skill's identity is its path within the repo. See sources.ts.
+ */
+export async function readSkillDir(
+  dir: string,
+  group?: string,
+  id?: string,
+): Promise<Artifact> {
   let raw: string;
   try {
     raw = await readFile(join(dir, 'SKILL.md'), 'utf8');
@@ -142,8 +151,7 @@ export async function readSkillDir(dir: string, group?: string): Promise<Artifac
   for (const f of await walk(dir)) {
     files.push({ path: relative(dir, f).split(sep).join('/'), bytes: await readFile(f) });
   }
-  const id = dir.split(sep).filter(Boolean).pop()!;
-  return build('skill', id, dir, raw, files, group);
+  return build('skill', id ?? dir.split(sep).filter(Boolean).pop()!, dir, raw, files, group);
 }
 
 /** Read a single-file artifact (command or agent). */
@@ -151,11 +159,18 @@ export async function readFileArtifact(
   kind: Kind,
   file: string,
   group?: string,
+  id?: string,
 ): Promise<Artifact> {
   const bytes = await readFile(file);
   const raw = bytes.toString('utf8');
-  const id = basename(file).replace(/\.md$/i, '');
-  return build(kind, id, file, raw, [{ path: basename(file), bytes }], group);
+  return build(
+    kind,
+    id ?? basename(file).replace(/\.md$/i, ''),
+    file,
+    raw,
+    [{ path: basename(file), bytes }],
+    group,
+  );
 }
 
 export async function isSkillDir(dir: string): Promise<boolean> {

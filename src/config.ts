@@ -28,9 +28,9 @@ export interface Wire {
   targets: TargetConfig[];
   /** Which kinds to wire. Defaults to all of them. */
   kinds?: Kind[];
-  /** Install only these skill ids. Omit for all. */
+  /** Install only ids matching these patterns. `*` is a wildcard. Omit for all. */
   only?: string[];
-  /** Never install these skill ids. */
+  /** Never install ids matching these patterns. `*` is a wildcard. */
   exclude?: string[];
 }
 
