@@ -173,6 +173,34 @@ export async function readFileArtifact(
   );
 }
 
+/**
+ * Return `raw` with its frontmatter `name:` set to `name`, inserting
+ * frontmatter if there is none.
+ *
+ * Needed by targets that key on the declared name rather than on where the
+ * artifact came from. Multica stores `skill.name` as a column and reads it from
+ * SKILL.md, so two skills declaring the same name overwrite each other however
+ * distinct their paths were — which is exactly what path-based ids exist to
+ * prevent. Rewriting this one field on upload makes the id authoritative there
+ * too. The copy on disk is never modified.
+ */
+export function withName(raw: string, name: string): string {
+  if (!raw.startsWith('---')) {
+    return `---\nname: ${name}\n---\n\n${raw}`;
+  }
+  const end = raw.indexOf('\n---', 3);
+  if (end === -1) return `---\nname: ${name}\n---\n\n${raw}`;
+
+  const headStart = raw.indexOf('\n') + 1;
+  const block = raw.slice(headStart, end);
+  const rest = raw.slice(end);
+
+  if (/^name:/m.test(block)) {
+    return raw.slice(0, headStart) + block.replace(/^name:.*$/m, `name: ${name}`) + rest;
+  }
+  return raw.slice(0, headStart) + `name: ${name}\n` + block + rest;
+}
+
 export async function isSkillDir(dir: string): Promise<boolean> {
   try {
     return (await stat(join(dir, 'SKILL.md'))).isFile();

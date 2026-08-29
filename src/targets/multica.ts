@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import type { Artifact, Kind } from '../artifact.js';
+import { withName, type Artifact, type Kind } from '../artifact.js';
 import { zip } from '../zip.js';
 import {
   partitionByKind,
@@ -180,6 +180,95 @@ export class MulticaTarget implements Target {
     }
   }
 
+  /** The authenticated user's id, used to bound what prune may delete. */
+  private async currentUserId(): Promise<string | null> {
+    try {
+      const { stdout } = await run(this.bin, ['user', 'profile', 'get', '--output', 'json']);
+      const d = JSON.parse(stdout) as { id?: string } | { id?: string }[];
+      return (Array.isArray(d) ? d[0]?.id : d.id) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Delete workspace skills that are no longer in the source.
+   *
+   * Bounded to skills the authenticated user created. A multica workspace is
+   * shared, so "not in my source" does not mean "unwanted" — a colleague's
+   * skill, or one authored in the web UI by someone else, must survive a prune
+   * run. Anything owned by another user is reported rather than removed.
+   *
+   * Note that deleting a skill also drops its agent assignments; there is no
+   * way to remove one without that. Hence prune is opt-in and scoped, not the
+   * default.
+   */
+  private async pruneSkills(
+    installed: Artifact[],
+    opts: InstallOptions,
+    res: InstallResult,
+  ): Promise<void> {
+    const me = await this.currentUserId();
+    if (!me) {
+      res.skipped.push({
+        id: '*',
+        reason: 'prune skipped: could not determine the current user to bound deletions',
+      });
+      return;
+    }
+
+    let remote: { id: string; name: string; created_by?: string }[];
+    try {
+      const { stdout } = await run(this.bin, ['skill', 'list', '--output', 'json']);
+      remote = JSON.parse(stdout);
+    } catch (err) {
+      res.skipped.push({
+        id: '*',
+        reason: `prune skipped: could not list skills (${err instanceof Error ? err.message.split('\n')[0] : err})`,
+      });
+      return;
+    }
+
+    // Compare ids, not frontmatter names: uploads force the declared name to
+    // the id, so the id is what a remote skill is called. Using a.name here
+    // inverts the result — it would prune what was just installed and keep the
+    // orphans.
+    const keep = new Set(installed.map((a) => a.id));
+    let foreign = 0;
+
+    for (const r of remote) {
+      if (keep.has(r.name)) continue;
+      if (r.created_by !== me) {
+        foreign++;
+        continue;
+      }
+      if (opts.dryRun) {
+        res.skipped.push({ id: `skill:${r.name}`, reason: 'would prune (not in source)' });
+        continue;
+      }
+      try {
+        await run(this.bin, ['skill', 'delete', r.id, '--yes']);
+        res.skipped.push({ id: `skill:${r.name}`, reason: 'pruned (not in source)' });
+      } catch (err) {
+        res.skipped.push({
+          id: `skill:${r.name}`,
+          reason: `prune failed: ${err instanceof Error ? err.message.split('\n')[0] : err}`,
+        });
+      }
+    }
+
+    if (foreign) {
+      res.skipped.push({
+        id: `${foreign} skill${foreign === 1 ? '' : 's'}`,
+        reason: 'not pruned: created by another user in this shared workspace',
+      });
+    }
+
+    // Agents are never pruned. multica archives rather than deletes them, which
+    // is reversible and better done deliberately than as a side effect of a
+    // source no longer mentioning one.
+  }
+
   async install(artifacts: Artifact[], opts: InstallOptions): Promise<InstallResult> {
     const { accepted, result: res } = partitionByKind(artifacts, this.kinds, this.name);
     const skills = accepted.filter((a) => a.kind === 'skill');
@@ -214,9 +303,19 @@ export class MulticaTarget implements Target {
           continue;
         }
 
+        // Force the declared name to the artifact id. Multica keys skills on
+        // the frontmatter name, so without this two skills from different
+        // directories that happen to declare the same name silently overwrite
+        // each other — and nested skills lose their path prefix entirely.
         await writeFile(
           archive,
-          zip(s.files.map((f) => ({ path: f.path, bytes: f.bytes }))),
+          zip(
+            s.files.map((f) =>
+              f.path === 'SKILL.md'
+                ? { path: f.path, bytes: Buffer.from(withName(f.bytes.toString('utf8'), s.id), 'utf8') }
+                : { path: f.path, bytes: f.bytes },
+            ),
+          ),
         );
 
         try {
@@ -242,15 +341,7 @@ export class MulticaTarget implements Target {
       await rm(tmp, { recursive: true, force: true });
     }
 
-    if (opts.prune) {
-      // Deliberately not implemented. Pruning here would delete skills from a
-      // shared workspace that other people may have created through the UI, and
-      // multica skills carry agent assignments that a delete would discard.
-      res.skipped.push({
-        id: '*',
-        reason: 'prune not supported for multica (would delete shared, agent-assigned skills)',
-      });
-    }
+    if (opts.prune) await this.pruneSkills(skills, opts, res);
 
     return res;
   }

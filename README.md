@@ -95,7 +95,9 @@ fail  claude  refusing to install: Claude Code resolves to
 
 If you currently symlink, remove the link and let skillwire own the directory.
 
-**`--prune` is not supported for Multica.** Deleting there would remove skills other people may have created in a shared workspace, and would discard the agent assignments attached to them.
+**`--prune` on Multica only deletes skills you created.** A Multica workspace is shared, so "not in my source" doesn't mean "unwanted" — a colleague's skill must survive your prune run. Ownership is checked against `skill.created_by`, and anything owned by someone else is reported rather than removed. Agents are never pruned: Multica archives rather than deletes them, which is better done deliberately.
+
+Note that deleting a skill also drops its agent assignments. There is no way to remove one without the other, which is why prune is opt-in.
 
 ## Targets
 
@@ -104,6 +106,8 @@ If you currently symlink, remove the link and let skillwire own the directory.
 Skills are uploaded with `multica skill import --file`, not `--url`. The URL form records an origin and enables `skill refresh`, but the import runs **server-side** — the backend fetches the URL itself, so it only works for repos the backend can read. Uploading the bytes needs no credentials, which is what makes private skill repos work.
 
 The trade-off: a `--file` import records no origin, so `skill refresh` can't re-pull it. Re-running skillwire is the refresh.
+
+Multica keys skills on the `name` in their frontmatter, not on where they came from, so skillwire rewrites that field to the artifact id when packaging. Without it, two skills declaring the same name overwrite each other however distinct their paths were, and nested skills lose their prefix — the exact collisions path-based ids exist to prevent. Only the uploaded copy is changed; the file on disk is untouched.
 
 Multica's CLI is scoped to one workspace. Set `workspace` to switch first — but note that changes the profile default, which a local daemon also reads, so it's explicit rather than automatic.
 
