@@ -3,10 +3,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import type { Skill } from '../skill.js';
+import type { Artifact, Kind } from '../artifact.js';
 import { zip } from '../zip.js';
 import {
-  emptyResult,
+  partitionByKind,
   type InstallOptions,
   type InstallResult,
   type Target,
@@ -25,6 +25,13 @@ export interface MulticaOptions {
   workspace?: string;
   /** fail | overwrite | rename | skip. Overwrite is what re-running a sync wants. */
   onConflict?: 'fail' | 'overwrite' | 'rename' | 'skip';
+  /**
+   * Runtime to create agents on, by name as shown in `multica runtime list`
+   * (e.g. "Claude (ship)"). Required to wire agents: --runtime-id is mandatory
+   * on `agent create` and is a workspace-specific UUID, so it cannot come from
+   * the agent file. Without it, agents are skipped rather than guessed at.
+   */
+  agentRuntime?: string;
 }
 
 /**
@@ -50,14 +57,17 @@ export interface MulticaOptions {
 export class MulticaTarget implements Target {
   readonly id = 'multica';
   readonly name = 'Multica';
+  readonly kinds: Kind[] = ['skill', 'agent'];
   private bin: string;
   private workspace?: string;
   private onConflict: string;
+  private agentRuntime?: string;
 
   constructor(opts: MulticaOptions = {}) {
     this.bin = opts.bin ?? 'multica';
     this.workspace = opts.workspace;
     this.onConflict = opts.onConflict ?? 'overwrite';
+    this.agentRuntime = opts.agentRuntime;
   }
 
   async detect(): Promise<boolean> {
@@ -80,8 +90,100 @@ export class MulticaTarget implements Target {
     }
   }
 
-  async install(skills: Skill[], opts: InstallOptions): Promise<InstallResult> {
-    const res = emptyResult();
+  /** Resolve a runtime name to its id. */
+  private async runtimeId(name: string): Promise<string | null> {
+    try {
+      const { stdout } = await run(this.bin, ['runtime', 'list', '--output', 'json']);
+      const list = JSON.parse(stdout) as { id: string; name: string }[];
+      return list.find((r) => r.name === name)?.id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async existingAgent(name: string): Promise<string | null> {
+    try {
+      const { stdout } = await run(this.bin, ['agent', 'list', '--output', 'json']);
+      const list = JSON.parse(stdout) as { id: string; name: string }[];
+      return list.find((a) => a.name === name)?.id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Wire agent .md files to `agent create` / `agent update`.
+   *
+   * Only the fields the file actually describes are sent: name, description and
+   * instructions. Runtime, model, MCP servers, environment and skill
+   * assignments are deliberately left alone on update, because those are set in
+   * the UI and are not expressible in an agent file — passing them would mean
+   * silently reverting choices skillwire did not make. The runtime is supplied
+   * only on create, where it is mandatory.
+   *
+   * Claude's `tools:` frontmatter has no multica equivalent and is dropped.
+   */
+  private async installAgents(
+    agents: Artifact[],
+    opts: InstallOptions,
+    res: InstallResult,
+  ): Promise<void> {
+    if (!this.agentRuntime) {
+      for (const a of agents)
+        res.skipped.push({
+          id: `agent:${a.id}`,
+          reason: 'no agentRuntime configured (--runtime-id is required to create agents)',
+        });
+      return;
+    }
+
+    let runtimeId: string | null = null;
+
+    for (const a of agents) {
+      const existing = opts.dryRun ? null : await this.existingAgent(a.name);
+      try {
+        if (existing) {
+          if (!opts.dryRun)
+            await run(this.bin, [
+              'agent', 'update', existing,
+              '--description', a.description,
+              '--instructions', a.body,
+              '--output', 'json',
+            ]);
+          res.installed.push(`agent:${a.id} (updated)`);
+        } else {
+          if (!opts.dryRun) {
+            runtimeId ??= await this.runtimeId(this.agentRuntime);
+            if (!runtimeId) {
+              res.skipped.push({
+                id: `agent:${a.id}`,
+                reason: `runtime "${this.agentRuntime}" not found in this workspace`,
+              });
+              continue;
+            }
+            await run(this.bin, [
+              'agent', 'create',
+              '--name', a.name,
+              '--runtime-id', runtimeId,
+              '--description', a.description,
+              '--instructions', a.body,
+              '--output', 'json',
+            ]);
+          }
+          res.installed.push(`agent:${a.id} (created)`);
+        }
+        res.wrote.push(`${this.id}:agent:${a.id}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.skipped.push({ id: `agent:${a.id}`, reason: msg.split('\n')[0] ?? 'failed' });
+      }
+    }
+  }
+
+  async install(artifacts: Artifact[], opts: InstallOptions): Promise<InstallResult> {
+    const { accepted, result: res } = partitionByKind(artifacts, this.kinds, this.name);
+    const skills = accepted.filter((a) => a.kind === 'skill');
+    const agents = accepted.filter((a) => a.kind === 'agent');
 
     if (this.workspace) {
       const current = await this.currentWorkspace();
@@ -99,6 +201,8 @@ export class MulticaTarget implements Target {
         }
       }
     }
+
+    if (agents.length) await this.installAgents(agents, opts, res);
 
     const tmp = await mkdtemp(join(tmpdir(), 'skillwire-'));
     try {

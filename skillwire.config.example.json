@@ -8,10 +8,16 @@
     {
       "name": "work",
       "source": { "path": "~/src/team-skills/plugins", "layout": "nested" },
+      "kinds": ["skill", "command"],
       "targets": [
         "claude",
         { "id": "hermes", "defaultCategory": "work" },
-        { "id": "multica", "workspace": "work", "onConflict": "overwrite" }
+        {
+          "id": "multica",
+          "workspace": "work",
+          "onConflict": "overwrite",
+          "agentRuntime": "Claude (myhost)"
+        }
       ]
     }
   ]

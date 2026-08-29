@@ -1,18 +1,23 @@
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
-import { FlatSource, NestedSource, type Source } from './sources.js';
+import { FlatSource, NestedSource, type KindDirs, type Source } from './sources.js';
+import type { Kind } from './artifact.js';
 import type { Target } from './targets/base.js';
 import { claudeCode, pi } from './targets/filesystem.js';
 import { hermes } from './targets/hermes.js';
 import { multica } from './targets/multica.js';
 
 export interface SourceConfig {
+  /** Repo root. Each kind is read from a subdirectory of it. */
   path: string;
-  /** flat: <path>/<skill>/  ·  nested: <path>/<group>/skills/<skill>/ */
+  /**
+   * flat   <path>/<kindDir>/...
+   * nested <path>/<group>/<kindDir>/...   (Claude Code plugin marketplaces)
+   */
   layout?: 'flat' | 'nested';
-  /** Directory name holding skills inside each group, for nested layouts. */
-  inner?: string;
+  /** Override the subdirectory for a kind, e.g. { "command": "prompts" }. */
+  dirs?: KindDirs;
 }
 
 export type TargetConfig = string | ({ id: string } & Record<string, unknown>);
@@ -21,6 +26,8 @@ export interface Wire {
   name: string;
   source: SourceConfig;
   targets: TargetConfig[];
+  /** Which kinds to wire. Defaults to all of them. */
+  kinds?: Kind[];
   /** Install only these skill ids. Omit for all. */
   only?: string[];
   /** Never install these skill ids. */
@@ -39,8 +46,8 @@ export function expandPath(p: string): string {
 export function buildSource(cfg: SourceConfig): Source {
   const path = expandPath(cfg.path);
   return cfg.layout === 'nested'
-    ? new NestedSource(path, cfg.inner ?? 'skills', cfg.path)
-    : new FlatSource(path, cfg.path);
+    ? new NestedSource(path, cfg.dirs ?? {}, cfg.path)
+    : new FlatSource(path, cfg.dirs ?? {}, cfg.path);
 }
 
 export function buildTarget(cfg: TargetConfig): Target {

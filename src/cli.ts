@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { buildSource, buildTarget, expandPath, loadConfig, type Wire } from './config.js';
-import type { Skill } from './skill.js';
+import { KINDS, type Artifact, type Kind } from './artifact.js';
 import type { Target } from './targets/base.js';
 
 const c = {
@@ -20,6 +20,7 @@ ${c.bold('skillwire')} — push Agent Skills from one source into every agent th
 
 Options
   -c, --config <path>   config file (default: ./skillwire.config.json)
+      --kind <k>        only this kind: skill | command | agent (repeatable)
       --wire <name>     only this wire (repeatable)
       --target <id>     only this target (repeatable)
       --dry-run         report what would happen, write nothing
@@ -31,12 +32,13 @@ interface Args {
   config?: string;
   wires: string[];
   targets: string[];
+  kinds: Kind[];
   dryRun: boolean;
   prune: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { cmd: 'help', wires: [], targets: [], dryRun: false, prune: false };
+  const a: Args = { cmd: 'help', wires: [], targets: [], kinds: [], dryRun: false, prune: false };
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i]!;
@@ -44,6 +46,7 @@ function parseArgs(argv: string[]): Args {
     else if (v === '--prune') a.prune = true;
     else if (v === '--wire') a.wires.push(argv[++i]!);
     else if (v === '--target') a.targets.push(argv[++i]!);
+    else if (v === '--kind') a.kinds.push(argv[++i]! as Kind);
     else if (v === '-c' || v === '--config') a.config = argv[++i]!;
     else if (v === '-h' || v === '--help') a.cmd = 'help';
     else rest.push(v);
@@ -52,7 +55,7 @@ function parseArgs(argv: string[]): Args {
   return a;
 }
 
-function selectSkills(all: Skill[], wire: Wire): Skill[] {
+function selectArtifacts(all: Artifact[], wire: Wire): Artifact[] {
   let out = all;
   if (wire.only?.length) out = out.filter((s) => wire.only!.includes(s.id));
   if (wire.exclude?.length) out = out.filter((s) => !wire.exclude!.includes(s.id));
@@ -94,18 +97,24 @@ async function main(): Promise<number> {
 
   for (const wire of wires) {
     const source = buildSource(wire.source);
-    const all = await source.read();
-    const skills = selectSkills(all, wire);
+    const all = await source.read(wire.kinds ?? KINDS);
+    let skills = selectArtifacts(all, wire);
+    if (args.kinds.length) skills = skills.filter((s) => args.kinds.includes(s.kind));
 
     console.log(
-      `\n${c.bold(wire.name)}  ${c.dim(source.name)}  ${skills.length} skill${skills.length === 1 ? '' : 's'}` +
+      `\n${c.bold(wire.name)}  ${c.dim(source.name)}  ${skills.length} item${skills.length === 1 ? '' : 's'}` +
         (skills.length !== all.length ? c.dim(` (of ${all.length})`) : ''),
     );
 
     if (args.cmd === 'list') {
-      for (const s of skills) {
-        const group = s.group ? c.dim(`${s.group}/`) : '';
-        console.log(`  ${group}${s.id}  ${c.dim(`${s.files.length} files`)}`);
+      for (const kind of KINDS) {
+        const of = skills.filter((s) => s.kind === kind);
+        if (!of.length) continue;
+        console.log(`  ${c.dim(kind + 's')}`);
+        for (const s of of) {
+          const group = s.group ? c.dim(`${s.group}/`) : '';
+          console.log(`    ${group}${s.id}  ${c.dim(`${s.files.length} file${s.files.length === 1 ? '' : 's'}`)}`);
+        }
       }
       continue;
     }

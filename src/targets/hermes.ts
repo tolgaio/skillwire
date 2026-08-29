@@ -1,11 +1,11 @@
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { Skill } from '../skill.js';
+import type { Artifact, Kind } from '../artifact.js';
 import {
   assertNotInsideSource,
-  emptyResult,
-  writeSkillTree,
+  partitionByKind,
+  writeArtifact,
   type InstallOptions,
   type InstallResult,
   type Target,
@@ -42,6 +42,8 @@ export interface HermesOptions {
 export class HermesTarget implements Target {
   readonly id = 'hermes';
   readonly name = 'Hermes Agent';
+  /** Hermes has its own catalogue of skills only; no commands or agents on disk. */
+  readonly kinds: Kind[] = ['skill'];
   private skillsDir: string;
   private defaultCategory: string;
 
@@ -58,14 +60,14 @@ export class HermesTarget implements Target {
     }
   }
 
-  private category(s: Skill): string {
+  private category(s: Artifact): string {
     return s.group ?? this.defaultCategory;
   }
 
-  async install(skills: Skill[], opts: InstallOptions): Promise<InstallResult> {
-    const res = emptyResult();
-    await assertNotInsideSource(this.skillsDir, opts.sourceRoot, this.name);
-    const byCategory = new Map<string, Skill[]>();
+  async install(artifacts: Artifact[], opts: InstallOptions): Promise<InstallResult> {
+    const { accepted: skills, result: res } = partitionByKind(artifacts, this.kinds, this.name);
+    if (skills.length) await assertNotInsideSource(this.skillsDir, opts.sourceRoot, this.name);
+    const byCategory = new Map<string, Artifact[]>();
     for (const s of skills) {
       const c = this.category(s);
       byCategory.set(c, [...(byCategory.get(c) ?? []), s]);
@@ -76,7 +78,7 @@ export class HermesTarget implements Target {
       if (!opts.dryRun) await mkdir(catDir, { recursive: true });
 
       for (const s of group) {
-        res.wrote.push(await writeSkillTree(s, join(catDir, s.id), opts.dryRun));
+        res.wrote.push(await writeArtifact(s, catDir, opts.dryRun));
         res.installed.push(`${category}/${s.id}`);
       }
 

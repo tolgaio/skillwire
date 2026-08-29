@@ -1,94 +1,106 @@
 import { readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { isSkillDir, readSkill, type Skill } from './skill.js';
+import {
+  DEFAULT_KIND_DIR,
+  isDirKind,
+  isSkillDir,
+  readFileArtifact,
+  readSkillDir,
+  type Artifact,
+  type Kind,
+} from './artifact.js';
 
 export interface Source {
-  /** Label used in output. */
   name: string;
-  read(): Promise<Skill[]>;
+  /** Read every artifact of the given kinds. */
+  read(kinds: Kind[]): Promise<Artifact[]>;
+}
+
+/** Per-kind subdirectory names, relative to the source root. */
+export type KindDirs = Partial<Record<Kind, string>>;
+
+async function readKindDir(
+  kind: Kind,
+  dir: string,
+  group?: string,
+): Promise<Artifact[]> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return []; // a repo without this kind is normal, not an error
+  }
+
+  const out: Artifact[] = [];
+  for (const e of entries) {
+    if (e.name.startsWith('.')) continue;
+    const full = join(dir, e.name);
+    if (isDirKind(kind)) {
+      if (e.isDirectory() && (await isSkillDir(full)))
+        out.push(await readSkillDir(full, group));
+    } else if (e.isFile() && e.name.toLowerCase().endsWith('.md')) {
+      out.push(await readFileArtifact(kind, full, group));
+    }
+  }
+  return out;
 }
 
 /**
- * Skills as direct children of a directory:
+ * A repo holding each kind in its own subdirectory:
  *
- *   <root>/<skill>/SKILL.md
- *
- * The common layout — anthropics/skills and most public skill repos.
+ *   <root>/skills/<skill>/SKILL.md
+ *   <root>/commands/<command>.md
+ *   <root>/agents/<agent>.md
  */
 export class FlatSource implements Source {
   constructor(
     private root: string,
+    private dirs: KindDirs = {},
     public name = resolve(root),
   ) {}
 
-  async read(): Promise<Skill[]> {
-    const out: Skill[] = [];
-    for (const e of await readdir(this.root, { withFileTypes: true })) {
-      if (!e.isDirectory() || e.name.startsWith('.')) continue;
-      const dir = join(this.root, e.name);
-      if (await isSkillDir(dir)) out.push(await readSkill(dir));
+  async read(kinds: Kind[]): Promise<Artifact[]> {
+    const out: Artifact[] = [];
+    for (const kind of kinds) {
+      const sub = this.dirs[kind] ?? DEFAULT_KIND_DIR[kind];
+      out.push(...(await readKindDir(kind, join(this.root, sub))));
     }
     return out.sort((a, b) => a.id.localeCompare(b.id));
   }
 }
 
 /**
- * Skills nested one level under a grouping directory:
+ * A repo grouping each kind under a plugin-style directory:
  *
  *   <root>/<group>/skills/<skill>/SKILL.md
+ *   <root>/<group>/commands/<command>.md
  *
- * The Claude Code plugin-marketplace layout, e.g. a repo with
- * plugins/<plugin>/skills/<skill>. The group is carried on each skill so
- * targets that organise by category (hermes) can use it, and targets that do
- * not (claude, pi, multica) can ignore it.
+ * The Claude Code plugin-marketplace layout. The group travels with each
+ * artifact so targets that organise by category can use it, and targets that
+ * do not can ignore it.
  */
 export class NestedSource implements Source {
   constructor(
     private root: string,
-    private inner = 'skills',
+    private dirs: KindDirs = {},
     public name = resolve(root),
   ) {}
 
-  async read(): Promise<Skill[]> {
-    const out: Skill[] = [];
-    for (const g of await readdir(this.root, { withFileTypes: true })) {
+  async read(kinds: Kind[]): Promise<Artifact[]> {
+    const out: Artifact[] = [];
+    let groups;
+    try {
+      groups = await readdir(this.root, { withFileTypes: true });
+    } catch {
+      return out;
+    }
+    for (const g of groups) {
       if (!g.isDirectory() || g.name.startsWith('.')) continue;
-      const groupDir = join(this.root, g.name, this.inner);
-      let entries;
-      try {
-        entries = await readdir(groupDir, { withFileTypes: true });
-      } catch {
-        continue; // a group without a skills/ dir is normal, not an error
-      }
-      for (const e of entries) {
-        if (!e.isDirectory() || e.name.startsWith('.')) continue;
-        const dir = join(groupDir, e.name);
-        if (await isSkillDir(dir)) out.push(await readSkill(dir, g.name));
+      for (const kind of kinds) {
+        const sub = this.dirs[kind] ?? DEFAULT_KIND_DIR[kind];
+        out.push(...(await readKindDir(kind, join(this.root, g.name, sub), g.name)));
       }
     }
     return out.sort((a, b) => a.id.localeCompare(b.id));
   }
-}
-
-/**
- * Detect which layout a repo uses.
- *
- * Checks for skills as direct children first, then a plugin-style nesting.
- * Returns null when neither matches, so callers can report it rather than
- * silently installing nothing.
- */
-export async function detectSource(root: string): Promise<Source | null> {
-  const flat = new FlatSource(root);
-  if ((await flat.read()).length > 0) return flat;
-
-  for (const sub of ['skills', 'plugins']) {
-    const dir = join(root, sub);
-    try {
-      const s = sub === 'skills' ? new FlatSource(dir) : new NestedSource(dir);
-      if ((await s.read()).length > 0) return s;
-    } catch {
-      /* not this layout */
-    }
-  }
-  return null;
 }

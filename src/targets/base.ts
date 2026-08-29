@@ -1,35 +1,85 @@
 import { mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
-import type { Skill } from '../skill.js';
+import { isDirKind, type Artifact, type Kind } from '../artifact.js';
 
 export interface InstallResult {
   installed: string[];
   skipped: { id: string; reason: string }[];
-  /** Paths or identifiers written, for reporting. */
   wrote: string[];
 }
 
 export interface InstallOptions {
   dryRun?: boolean;
-  /** Remove skills present at the target but absent from the source. */
+  /** Remove artifacts present at the target but absent from the source. */
   prune?: boolean;
   /**
-   * Absolute path the skills were read from. Filesystem targets use it to
+   * Absolute path the artifacts were read from. Filesystem targets use it to
    * refuse writing into their own source — see assertNotInsideSource.
    */
   sourceRoot?: string;
 }
 
 /**
+ * A destination for artifacts.
+ *
+ * The interface is deliberately behavioural — `install()` rather than a
+ * `skillsDir` string — because not every target is a filesystem. Multica is an
+ * HTTP API behind a CLI, and Hermes wants a different on-disk shape from the
+ * flat layout everything else uses. A declarative "here is my directory"
+ * contract cannot express either.
+ */
+export interface Target {
+  readonly id: string;
+  readonly name: string;
+  /** Which kinds this target can accept. Others are reported as skipped. */
+  readonly kinds: Kind[];
+  detect(): Promise<boolean>;
+  install(artifacts: Artifact[], opts: InstallOptions): Promise<InstallResult>;
+}
+
+export function emptyResult(): InstallResult {
+  return { installed: [], skipped: [], wrote: [] };
+}
+
+/**
+ * Split off artifacts this target cannot take, recording why.
+ *
+ * Every target calls this rather than silently dropping them: a command wired
+ * at a target with no notion of commands should say so, not vanish.
+ */
+export function partitionByKind(
+  artifacts: Artifact[],
+  kinds: Kind[],
+  targetName: string,
+): { accepted: Artifact[]; result: InstallResult } {
+  const result = emptyResult();
+  const accepted: Artifact[] = [];
+  // Aggregate per kind rather than per artifact: a repo with 238 commands wired
+  // at a target that takes none should produce one line, not 238.
+  const rejected = new Map<Kind, number>();
+  for (const a of artifacts) {
+    if (kinds.includes(a.kind)) accepted.push(a);
+    else rejected.set(a.kind, (rejected.get(a.kind) ?? 0) + 1);
+  }
+  for (const [kind, n] of rejected) {
+    result.skipped.push({
+      id: `${n} ${kind}${n === 1 ? '' : 's'}`,
+      reason: `${targetName} takes no ${kind}s`,
+    });
+  }
+  return { accepted, result };
+}
+
+/**
  * Refuse to install into a directory that is inside the source, or that
  * contains it.
  *
- * This is not hypothetical. The conventional way to make skills visible to
- * Claude Code is to symlink ~/.claude/skills at the repo holding them, which
- * makes the target path resolve back to the source. Since installing replaces
- * each skill directory, that would rewrite the repo in place — and wiring a
- * *different* source at the same target would overwrite one repo's skills with
- * another's.
+ * This is not hypothetical. The conventional way to expose skills, agents and
+ * commands to Claude Code is to symlink ~/.claude/<kind> at the repo holding
+ * them, which makes the target path resolve back to the source. Since
+ * installing replaces each artifact, that would rewrite the repo in place — and
+ * wiring a different source at the same target would overwrite one repo's
+ * content with another's.
  *
  * Both paths are resolved through symlinks before comparing, because the whole
  * problem is that the target is a link.
@@ -45,7 +95,7 @@ export async function assertNotInsideSource(
   if (inside(t, s) || inside(s, t)) {
     throw new Error(
       `refusing to install: ${targetName} resolves to ${t}, which is inside the source ${s}. ` +
-        `A symlinked skills directory would make this rewrite the source repo.`,
+        `A symlinked directory would make this rewrite the source repo.`,
     );
   }
 }
@@ -64,46 +114,34 @@ async function realish(p: string): Promise<string> {
 }
 
 /**
- * A destination for skills.
+ * Write an artifact under `kindDir`, replacing whatever was there.
  *
- * The interface is deliberately behavioural — `install()` rather than a
- * `skillsDir` string — because not every target is a filesystem. Multica is an
- * HTTP API behind a CLI, and hermes wants a different on-disk shape from the
- * flat SKILL.md layout everything else uses. A declarative "here is my
- * directory" contract cannot express either, which is the limitation that made
- * an existing tool unusable for this set of targets.
- */
-export interface Target {
-  /** Stable identifier used in config and on the command line. */
-  readonly id: string;
-  /** Human-readable name for output. */
-  readonly name: string;
-  /** Is this target present on the current machine? */
-  detect(): Promise<boolean>;
-  install(skills: Skill[], opts: InstallOptions): Promise<InstallResult>;
-}
-
-export function emptyResult(): InstallResult {
-  return { installed: [], skipped: [], wrote: [] };
-}
-
-/**
- * Write a skill's files verbatim into `dest`, replacing whatever was there.
- *
- * Replace rather than merge: a skill that drops a file should not leave the
+ * Replace rather than merge: an artifact that drops a file should not leave the
  * stale copy behind, where an agent would still read it.
+ *
+ * Returns the path written, which is a directory for skills and a file for
+ * commands and agents.
  */
-export async function writeSkillTree(
-  skill: Skill,
-  dest: string,
+export async function writeArtifact(
+  artifact: Artifact,
+  kindDir: string,
   dryRun = false,
 ): Promise<string> {
-  if (dryRun) return dest;
-  await rm(dest, { recursive: true, force: true });
-  for (const f of skill.files) {
-    const out = join(dest, f.path);
-    await mkdir(dirname(out), { recursive: true });
-    await writeFile(out, f.bytes);
+  if (isDirKind(artifact.kind)) {
+    const dest = join(kindDir, artifact.id);
+    if (dryRun) return dest;
+    await rm(dest, { recursive: true, force: true });
+    for (const f of artifact.files) {
+      const out = join(dest, f.path);
+      await mkdir(dirname(out), { recursive: true });
+      await writeFile(out, f.bytes);
+    }
+    return dest;
   }
+
+  const dest = join(kindDir, `${artifact.id}.md`);
+  if (dryRun) return dest;
+  await mkdir(kindDir, { recursive: true });
+  await writeFile(dest, artifact.files[0]!.bytes);
   return dest;
 }

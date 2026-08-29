@@ -1,86 +1,110 @@
 import { readdir, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { Skill } from '../skill.js';
+import { isDirKind, type Artifact, type Kind } from '../artifact.js';
 import {
   assertNotInsideSource,
   emptyResult,
-  writeSkillTree,
+  partitionByKind,
+  writeArtifact,
   type InstallOptions,
   type InstallResult,
   type Target,
 } from './base.js';
 
+/** Where each kind lives, relative to $HOME when it starts with ~/ */
+export type KindPaths = Partial<Record<Kind, string>>;
+
 /**
- * Targets that want skills as flat directories of verbatim files:
+ * Targets that store artifacts as files on disk, one directory per kind.
  *
- *   <skillsDir>/<skill>/SKILL.md
- *
- * Claude Code and pi both work this way, so they differ only in path. Keeping
- * them as one implementation means a fix to copy semantics lands for both.
+ * Claude Code and pi differ only in their paths and in which kinds they
+ * support, so they share this implementation — a fix to copy or prune
+ * semantics lands for both.
  */
 export class FilesystemTarget implements Target {
+  readonly kinds: Kind[];
+
   constructor(
     readonly id: string,
     readonly name: string,
-    /** Absolute, or relative to $HOME when it starts with ~/ */
-    private skillsDir: string,
-  ) {}
+    private paths: KindPaths,
+  ) {
+    this.kinds = Object.keys(paths) as Kind[];
+  }
 
-  private dir(): string {
-    return this.skillsDir.startsWith('~/')
-      ? join(homedir(), this.skillsDir.slice(2))
-      : this.skillsDir;
+  private dir(kind: Kind): string {
+    const p = this.paths[kind]!;
+    return p.startsWith('~/') ? join(homedir(), p.slice(2)) : p;
   }
 
   async detect(): Promise<boolean> {
-    // The parent existing is the signal, not the skills dir itself — an agent
-    // that has never had skills installed still has its config directory.
-    try {
-      return (await stat(join(this.dir(), '..'))).isDirectory();
-    } catch {
-      return false;
+    // The parent existing is the signal: an agent that has never had artifacts
+    // installed still has its config directory.
+    for (const kind of this.kinds) {
+      try {
+        if ((await stat(join(this.dir(kind), '..'))).isDirectory()) return true;
+      } catch {
+        /* try the next kind */
+      }
     }
+    return false;
   }
 
-  async install(skills: Skill[], opts: InstallOptions): Promise<InstallResult> {
-    const res = emptyResult();
-    const root = this.dir();
-    await assertNotInsideSource(root, opts.sourceRoot, this.name);
+  async install(artifacts: Artifact[], opts: InstallOptions): Promise<InstallResult> {
+    const { accepted, result } = partitionByKind(artifacts, this.kinds, this.name);
 
-    for (const s of skills) {
-      res.wrote.push(await writeSkillTree(s, join(root, s.id), opts.dryRun));
-      res.installed.push(s.id);
+    const byKind = new Map<Kind, Artifact[]>();
+    for (const a of accepted) byKind.set(a.kind, [...(byKind.get(a.kind) ?? []), a]);
+
+    for (const [kind, group] of byKind) {
+      const root = this.dir(kind);
+      await assertNotInsideSource(root, opts.sourceRoot, `${this.name} ${kind}s`);
+
+      for (const a of group) {
+        result.wrote.push(await writeArtifact(a, root, opts.dryRun));
+        result.installed.push(`${kind}:${a.id}`);
+      }
+
+      if (opts.prune) {
+        const keep = new Set(group.map((a) => (isDirKind(kind) ? a.id : `${a.id}.md`)));
+        let existing: string[] = [];
+        try {
+          existing = (await readdir(root, { withFileTypes: true }))
+            .filter((e) => (isDirKind(kind) ? e.isDirectory() : e.isFile()))
+            .filter((e) => !e.name.startsWith('.'))
+            .map((e) => e.name);
+        } catch {
+          /* nothing installed yet */
+        }
+        for (const name of existing) {
+          if (keep.has(name)) continue;
+          if (!opts.dryRun) await rm(join(root, name), { recursive: true, force: true });
+          result.skipped.push({ id: `${kind}:${name}`, reason: 'pruned (not in source)' });
+        }
+      }
     }
 
-    if (opts.prune) {
-      const keep = new Set(skills.map((s) => s.id));
-      let existing: string[] = [];
-      try {
-        existing = (await readdir(root, { withFileTypes: true }))
-          .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
-          .map((e) => e.name);
-      } catch {
-        /* nothing installed yet */
-      }
-      for (const name of existing) {
-        if (keep.has(name)) continue;
-        if (!opts.dryRun) await rm(join(root, name), { recursive: true, force: true });
-        res.skipped.push({ id: name, reason: 'pruned (not in source)' });
-      }
-    }
-
-    return res;
+    return result;
   }
 }
 
 export const claudeCode = () =>
-  new FilesystemTarget('claude', 'Claude Code', '~/.claude/skills');
+  new FilesystemTarget('claude', 'Claude Code', {
+    skill: '~/.claude/skills',
+    command: '~/.claude/commands',
+    agent: '~/.claude/agents',
+  });
 
 /**
- * pi discovers skills from ~/.pi/agent/skills, ~/.agents/skills, and project
- * -level .pi/skills or .agents/skills. The global agent path is the one that
- * matches "installed for this user".
+ * pi discovers skills from ~/.pi/agent/skills and prompt templates — its
+ * equivalent of commands, invoked as /name — from ~/.pi/agent/prompts.
+ *
+ * It has no separate notion of subagent definition files, so agents are not
+ * wired here rather than being written somewhere pi would ignore.
  */
 export const pi = () =>
-  new FilesystemTarget('pi', 'pi', '~/.pi/agent/skills');
+  new FilesystemTarget('pi', 'pi', {
+    skill: '~/.pi/agent/skills',
+    command: '~/.pi/agent/prompts',
+  });
