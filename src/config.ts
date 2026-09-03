@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import {
@@ -99,6 +99,9 @@ export function buildSource(cfg: SourceConfig): Source {
   );
 }
 
+/** Every target id `buildTarget` knows, for menus and error messages. */
+export const TARGET_IDS = ['claude', 'pi', 'hermes', 'multica'] as const;
+
 export function buildTarget(cfg: TargetConfig): Target {
   const { id, ...opts } = typeof cfg === 'string' ? { id: cfg } : cfg;
   switch (id) {
@@ -111,9 +114,7 @@ export function buildTarget(cfg: TargetConfig): Target {
     case 'multica':
       return multica(opts as Parameters<typeof multica>[0]);
     default:
-      throw new Error(
-        `unknown target "${id}" (known: claude, pi, hermes, multica)`,
-      );
+      throw new Error(`unknown target "${id}" (known: ${TARGET_IDS.join(', ')})`);
   }
 }
 
@@ -142,4 +143,18 @@ export async function loadConfig(explicit?: string): Promise<{ config: Config; p
   throw new Error(
     `no config found (looked for ${CONFIG_NAMES.join(', ')} here and in ~/.config/skillwire)`,
   );
+}
+
+/**
+ * Write the config back, atomically.
+ *
+ * The interactive picker saves after every change, so a crash or a full disk
+ * mid-write must not be able to leave a half-written config — that file is the
+ * only record of what each wire installs. Writing beside the target and
+ * renaming makes the replacement a single step.
+ */
+export async function saveConfig(config: Config, path: string): Promise<void> {
+  const tmp = `${path}.${process.pid}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  await rename(tmp, path);
 }

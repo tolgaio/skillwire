@@ -12,10 +12,12 @@ ${c.bold('skillwire')} — push Agent Skills from one source into every agent th
   skillwire install [--dry-run] [--prune] [--wire <name>] [--target <id>]
   skillwire list                    show skills each wire would install
   skillwire targets                 show which targets are present on this machine
+  skillwire interactive             browse sources and pick artifacts in a terminal UI
 
 Options
   -c, --config <path>   config file (default: ./skillwire.config.json)
   -V, --version         print the version and exit
+  -i, --interactive     open the terminal UI
       --kind <k>        only this kind: skill | command | agent (repeatable)
       --wire <name>     only this wire (repeatable)
       --target <id>     only this target (repeatable)
@@ -57,9 +59,12 @@ function parseArgs(argv: string[]): Args {
     else if (v === '-c' || v === '--config') a.config = argv[++i]!;
     else if (v === '-h' || v === '--help') a.cmd = 'help';
     else if (v === '-V' || v === '--version') a.cmd = 'version';
+    else if (v === '-i' || v === '--interactive') a.cmd = 'interactive';
     else rest.push(v);
   }
-  if (rest[0]) a.cmd = rest[0];
+  // A flag beats a bare command, so `skillwire list -i` opens the UI rather
+  // than silently ignoring the flag.
+  if (rest[0] && a.cmd === 'help') a.cmd = rest[0];
   return a;
 }
 
@@ -78,6 +83,13 @@ async function main(): Promise<number> {
     ) as { version: string };
     console.log(pkg.version);
     return 0;
+  }
+
+  if (args.cmd === 'interactive') {
+    // Imported here so the common path does not pay for the UI, and so a
+    // terminal-only module is never loaded when there is no terminal.
+    const { interactive } = await import('./ui/index.js');
+    return interactive({ configPath: args.config, noFetch: args.noFetch });
   }
 
   const { config, path } = await loadConfig(args.config);

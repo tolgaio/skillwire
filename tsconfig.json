@@ -3,14 +3,19 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2023"],
+    "lib": [
+      "ES2023"
+    ],
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "declaration": true,
     "sourceMap": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*"
+  ]
 }

@@ -18,20 +18,27 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && npm run postbuild",
     "dev": "tsx src/cli.ts",
-    "test": "npm run build && node --test dist/*.test.js dist/targets/*.test.js",
+    "test": "npm run build && node --test dist/*.test.js dist/targets/*.test.js dist/ui/*.test.js dist/ui/components/*.test.js",
     "prepublishOnly": "npm run build",
-    "test:watch": "node --test --watch dist/*.test.js dist/targets/*.test.js",
+    "test:watch": "node --test --watch dist/*.test.js dist/targets/*.test.js dist/ui/*.test.js dist/ui/components/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "postbuild": "node -e \"require('fs').chmodSync('dist/cli.js', 0o755)\""
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/react": "^19.2.18",
+    "ink-testing-library": "^4.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@inkjs/ui": "^2.0.0",
+    "ink": "^7.1.1",
+    "react": "^19.2.8"
   }
 }

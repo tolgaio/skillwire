@@ -20,6 +20,54 @@ Three things count as breaking, all of them user-visible:
 
 ### Added
 
+- **A terminal UI**, `skillwire -i`. Add, edit, delete and fetch sources; browse
+  what each one holds with names and descriptions; tick the artifacts you want.
+
+  The config file is the only state — every change is written straight back, so
+  quitting the UI and running `skillwire install` does exactly what the screen
+  said, and a file edited by hand reads back the same way.
+
+  Ticking a box is an edit to `only`/`exclude`, made as small as possible: a
+  glob you wrote survives being near a box you clicked. Where the filter
+  language cannot express a change — a single artifact inside an excluded glob,
+  since `exclude` has the last word — the UI says which pattern is responsible
+  instead of rewriting it into something that means something else.
+
+  `i` installs, always with `--prune`: what is ticked is the whole of what that
+  source should have installed, and an install that only ever added would make
+  the checkboxes a description of nothing. `D` previews it.
+
+  `s` cycles the list between all, selected and unselected, because five hundred
+  skills is not reviewable by scrolling. `/` searches, and the bulk keys act on
+  what the list is showing rather than the whole source.
+
+  Arrows and vim keys both work, `?` shows every binding for the screen you are
+  on, a breadcrumb says where you are, and a panel under the list carries the
+  full description of the row under the cursor.
+
+  Built on [Ink](https://github.com/vadimdemedes/ink) and React. Flexbox is
+  what buys the side panel and a layout that survives any terminal size without
+  a single row calculation, and Ink's own test renderer means the picker is
+  driven through the real component tree in the suite — `stdin.write` for keys,
+  `lastFrame()` for what a terminal would show.
+
+  The CLI keeps no runtime dependencies of its own: the UI is a dynamic import,
+  so `skillwire install` never loads it.
+
+  The row under the cursor is a grey bar across the panel, in every list — a
+  marker at the start of the line is not enough to find yourself by in a list of
+  five hundred near-identical names. It recolours nothing on the row, so a green
+  tick stays a green tick; `SKILLWIRE_HIGHLIGHT` picks a different colour for a
+  terminal grey does not suit.
+
+  **The mouse works**: click a skill to tick it, a breadcrumb to go back to it,
+  a key in the footer to press it, and the wheel to scroll. Ink has no mouse
+  API, so the terminal is asked to report clicks and the reports are parsed out
+  of the input stream before any screen can read them as keystrokes. Regions
+  are measured from Ink's own layout rather than calculated, so they stay right
+  when the terminal resizes or a panel appears. `m` turns tracking off, because
+  while it is on the terminal stops selecting text on drag.
+
 - **Git sources.** A wire can read from a repository instead of a local
   directory:
 
@@ -54,7 +102,18 @@ Three things count as breaking, all of them user-visible:
   including its prune and containment behaviour.
 - CI on Linux and macOS, Node 20/22/24.
 
+### Breaking
+
+- **Node 22 is now the minimum**, up from 20, which reached end of life in
+  April. It is what Ink requires, and nothing is published yet for the bump to
+  break.
+
 ### Fixed
+
+- **YAML block scalars in frontmatter were dropped.** A skill written as
+  `description: |` or `description: >` — which many are — parsed to the
+  indicator character and lost the text. Descriptions are now read properly,
+  with folded style joining the lines the author wrapped.
 
 - **`--prune` could not remove artifacts whose ids had changed.** Prune was
   scoped to a wire's prefix, so anything installed under a *previous* naming
@@ -77,6 +136,16 @@ Three things count as breaking, all of them user-visible:
   Previously the prefix was the only thing standing between one wire's prune and
   another wire's work; a wire without a prefix pruned everything it did not
   recognise.
+
+- **`install` names what it added**, the way prune already named what it
+  removed. Every run reinstalls everything, so the count alone could not answer
+  the only question worth asking after ticking a box — did that one arrive? The
+  additions come from the same manifest prune reads, so they are exact rather
+  than inferred. Long lists are capped at twenty with a count for the rest.
+
+- **Colour is switched off when output is not a terminal**, and honours
+  `NO_COLOR`. `skillwire list | grep` no longer matches against escape
+  sequences.
 
 - **A source directory that does not exist is now an error** rather than an
   empty read. A typo was previously indistinguishable from a repo with nothing

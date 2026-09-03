@@ -14,7 +14,7 @@ jobs:
         # Path handling and symlink resolution differ enough between platforms
         # that testing one would not tell us much about the other.
         os: [ubuntu-latest, macos-latest]
-        node: [20, 22, 24]
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

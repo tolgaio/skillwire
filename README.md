@@ -60,7 +60,11 @@ need to be able to test the others.
 npm i -g skillwire     # or run it with: npx skillwire
 ```
 
-Node 20+. No runtime dependencies.
+Node 22+.
+
+The CLI has no runtime dependencies. The terminal UI is built on
+[Ink](https://github.com/vadimdemedes/ink) and React, which load only when you
+open it.
 
 ## Quick start
 
@@ -80,245 +84,121 @@ skillwire install --dry-run # what it would do
 skillwire install           # do it
 ```
 
-## Concepts
+Or do all of it from the terminal UI:
 
-### Wires
-
-Both wires above install into `claude`, which is why the second carries a
-`prefix` — see [namespacing](#namespacing-a-source).
-
-A **wire** connects one source to many targets. That's the unit of work, and the tool's name.
-
-```json
-{ "name": "personal", "source": { "path": "~/src/my-skills" }, "targets": ["claude", "pi"] }
+```bash
+skillwire -i
 ```
 
-Several wires can feed the same target — personal and work skills both landing in Claude Code — while diverging elsewhere. Wires are independent: one failing doesn't stop the rest.
+## Interactive
 
-### Kinds
-
-skillwire carries three kinds of thing, which differ in shape *and* in which targets accept them:
-
-| kind | on disk | source dir | claude | pi | hermes | multica |
-|---|---|---|---|---|---|---|
-| `skill` | directory + `SKILL.md` | `skills/` | ✓ | ✓ | ✓ | ✓ |
-| `command` | single `.md` | `commands/` | ✓ | ✓ as prompts | — | — |
-| `agent` | single `.md` | `agents/` | ✓ | — | — | ✓ |
-
-Kinds a target can't accept are **reported, not silently dropped**:
+`skillwire -i` (or `skillwire interactive`) opens a terminal UI over the same
+config file. Add sources, see what each one holds, tick what you want, install.
 
 ```
-would  hermes  27 installed
-       ! 238 commands: Hermes Agent takes no commands
+╭────────────────────────────────────────────────────────────────────────────╮
+│ skillwire › sources › mine                            mine · 500 artifacts │
+╰────────────────────────────────────────────────────────────────────────────╯
+╭──────────────────────────────────────────╮╭────────────────────────────────╮
+│ mine 268 of 500 selected                 ││ pdf-export                     │
+│  prefix p   exclude skill:vendored-*     ││ kind    skill                  │
+│   skills  27/259                         ││ files   4                      │
+│ ▸ [x] pdf-export       Turn a document…  ││                                │
+│   [x] tone-check       Flag hedging an…  ││ Turn a document into a tagged, │
+│   [ ] vendored-import  (no description)  ││ accessible PDF, with the       │
+│   1–18 of 500                            ││ heading structure and alt text │
+╰──────────────────────────────────────────╯╰────────────────────────────────╯
+ ✓ saved
+ space tick  a all  n none  s showing  / search  f filters  i install  ? keys
 ```
 
-### Ids
+A breadcrumb says where you are, a side panel carries the full description of
+whatever the cursor is on — the list has room for a line of it, and a skill's
+description is usually a paragraph saying when to use it — and **`?` shows every
+key** for the screen you are on. On a narrow terminal the side panel moves below
+the list.
 
-An artifact's **id** is its path within its kind directory, dash-joined:
+### Keys
 
-```
-skills/pdf-export/               ->  pdf-export
-skills/writing/tone-check/       ->  writing-tone-check
-skills/vendored/rewrite/default/ ->  vendored-rewrite-default
-commands/review.md               ->  review
-```
+Arrows and vim keys both work everywhere: `j`/`k` move, `h` goes back, `l` goes
+in, `g`/`G` jump to the ends, `^u`/`^d` page. The row under the cursor is a grey
+bar across the panel — in a list of five hundred near-identical names, a marker
+at the start of the line is not enough to find yourself by.
 
-Targets install into one flat directory, so a hierarchy has to flatten. Using the basename alone would collide — one real repo has four different skills called `default` — and silently overwrite. The full path is unique by construction and says where the thing came from.
+The bar recolours nothing on the row, so a green tick stays a green tick. Grey
+is a guess about your terminal, though; set `SKILLWIRE_HIGHLIGHT` to any colour
+name or hex if it does not suit yours:
 
-When a source holds kind directories in more than one place — with
-[`layout: auto`](#layout) or [`paths`](#scanning-only-part-of-a-repo) — the path
-leading up to the kind directory joins the id too, so
-`plugins/tools/skills/publish` is `plugins-tools-publish`. Ids are always
-relative to the source root.
-
-The id is what you filter on, and what a skill is called once installed. The
-installed copy's frontmatter `name` is rewritten to match it, so a file never
-contradicts the directory it sits in — your source files are not modified.
-
-## Configuration
-
-`skillwire.config.json` in the working directory, or `~/.config/skillwire/skillwire.config.json`. Override with `-c`.
-
-```json
-{
-  "wires": [
-    {
-      "name": "personal",
-      "source": { "path": "~/src/my-skills", "layout": "flat" },
-      "kinds": ["skill", "command"],
-      "exclude": ["skill:vendored-*"],
-      "targets": ["claude", "pi"]
-    },
-    {
-      "name": "anthropic",
-      "prefix": "anthropic",
-      "source": { "git": "anthropics/skills" },
-      "targets": ["claude"]
-    },
-    {
-      "name": "work",
-      "prefix": "work",
-      "source": { "path": "~/src/team-skills/plugins", "layout": "nested" },
-      "targets": [
-        "claude",
-        { "id": "hermes", "defaultCategory": "work" },
-        { "id": "multica", "workspace": "work", "agentRuntime": "Claude (myhost)" }
-      ]
-    }
-  ]
-}
+```bash
+SKILLWIRE_HIGHLIGHT=blue skillwire -i
 ```
 
-### Wire fields
+| where | keys |
+|---|---|
+| Sources | `a` add · `e` edit · `d` delete · `f` fetch · `r` re-read · `i` install · `D` dry run · `I` install all · `q` quit |
+| Browse | `space` tick · `a` all · `n` none · `v` invert · `s` showing · `/` search · `f` filters · `K` kinds · `i` install |
+| Filters | `o` add an `only` pattern · `x` add an `exclude` · `d` delete |
+| Form | type to edit · `⏎` next field · `←→` change · `space` toggle a target · `^s` save |
+| Anywhere | `?` keys · `m` mouse on/off · `q` quit |
 
-| field | type | meaning |
-|---|---|---|
-| `name` | string | label, and what `--wire` matches |
-| `source` | object | where artifacts come from |
-| `targets` | array | strings, or `{ "id": ..., ...options }` |
-| `kinds` | array | which kinds to wire. Default: all three |
-| `only` | array | install only ids matching these patterns |
-| `exclude` | array | never install ids matching these patterns |
-| `prefix` | string | namespace this wire's ids as `<prefix>-<id>` |
+### Mouse
 
-### Source
+Click a skill to tick it, a breadcrumb to go back to it, or a key in the footer
+strip to press it. The wheel scrolls the list.
 
-A source is either a directory on this machine or a git repository. Everything
-after that point is identical — a cloned repo *is* a directory, so ids,
-filtering, prefixes and prune behave exactly the same either way.
+**`m` turns it off.** While the terminal is reporting clicks it stops selecting
+text on drag — most terminals still select if you hold shift (option on macOS),
+but if you copy out of the list often you will want it off.
 
-| field | default | meaning |
-|---|---|---|
-| `path` | — | a directory on this machine. **Repo root**, not the skills directory |
-| `git` | — | a repository to clone. `owner/name`, or any URL git accepts |
-| `ref` | default branch | branch, tag or commit. `git` sources only |
-| `layout` | `flat` / `auto` | `flat`, `nested` or `auto` |
-| `paths` | whole repo | subdirectories to scan |
-| `dirs` | see below | override the subdirectory for a kind |
+### Reviewing a large source
 
-Exactly one of `path` and `git`.
+`s` cycles the list between **all**, **selected** and **unselected**. Five
+hundred skills is not reviewable by scrolling, and the question you actually
+have is "what did I pick?".
 
-#### Local
+`/` searches names and descriptions, and `a`, `n` and `v` act on **what the list
+is currently showing** — so `/deploy` then `a` ticks every deploy skill and
+nothing else. `esc` clears the search and the showing filter; a second `esc`
+leaves the screen.
 
-```json
-"source": { "path": "~/src/my-skills" }
-```
+### Installing
 
-Each kind is read from a subdirectory of the root — `skills/`, `commands/`,
-`agents/`. A repo missing one simply contributes nothing for that kind. A path
-that does not exist is an error, not an empty read.
+`i` installs the source under the cursor. **It always runs with `--prune`**,
+because what is ticked is the whole of what that source should have installed —
+an install that only ever added would leave everything you unticked in place and
+make the checkboxes a description of nothing. `D` is the same thing as a dry
+run, which is the way to see the deletions before they happen. `I` installs
+every source.
 
-#### From a repository
+The same output `skillwire install` prints streams into a panel while it runs,
+with a spinner until it finishes. Press enter to go back.
 
-```json
-"source": { "git": "owner/name" }
-"source": { "git": "owner/name", "ref": "v2" }
-"source": { "git": "git@github.com:owner/private.git" }
-"source": { "git": "gitlab.com/owner/name" }
-```
+### The config file is the only state
 
-`owner/name` means GitHub. Anything else is passed to git as written, so any
-host works.
+Every change is written straight back — there is nothing to save and no session
+to lose — so quitting and running `skillwire install` does exactly what the
+screen said. Editing the file by hand and reopening the UI works the same way
+round.
 
-The repo is cloned — shallow, since only its current state matters — into
-`~/.cache/skillwire/repos/` (or `$XDG_CACHE_HOME`), and updated on each run.
-`--no-fetch` skips the network and reads what is already cached. The cache is
-skillwire's; it resets and cleans the tree on every fetch, so a force-push or a
-changed `ref` cannot leave a stale artifact behind to be installed.
+### Ticking a box is a filter edit
 
-> **Authentication is git's own.** An SSH URL uses your SSH key; an https URL
-> uses your credential helper, which `gh auth setup-git` installs. skillwire
-> never takes, stores or logs a token. If you do put one in the URL, it is
-> redacted from every message skillwire prints — but a credential helper is the
-> better answer.
+The checkboxes are a view of [`only` and `exclude`](#filtering), not a second
+list living somewhere else. Ticking makes the smallest edit that produces the
+result you asked for, so a glob you wrote survives being near a box you clicked:
+with `exclude: ["skill:vendored-*"]`, unticking one unrelated skill adds one
+entry and leaves the glob alone.
 
-#### Layout
+Two consequences worth knowing:
 
-**`flat`** — kinds directly under the root. Most skill repos, and the default
-for a local `path`:
+- **Unticking most of a large source is stored as an allowlist.** Picking 3 of
+  500 writes `only` with 3 entries, not `exclude` with 497. It flips to
+  whichever form is shorter, but only when the source has no globs — a pattern
+  you wrote is worth more than a shorter file.
+- **An artifact inside an excluded glob cannot be ticked.** `exclude` has the
+  last word and the filter language has no way to say "except this one", so the
+  UI names the pattern and sends you to `f` rather than silently rewriting it.
 
-```
-my-repo/skills/pdf-export/SKILL.md
-my-repo/commands/review.md
-```
-
-**`nested`** — one grouping level first, the Claude Code plugin-marketplace
-layout:
-
-```
-my-repo/plugins/tools/skills/style-guide/SKILL.md
-                └── group ──┘
-```
-
-The group travels with each artifact, so targets that organise by category
-(Hermes) use it and targets that don't ignore it. Point the root at `plugins/`.
-
-**`auto`** — find the kind directories wherever they are. The default for a
-`git` source, because a repo you are pointing at is not necessarily a repo you
-laid out:
-
-```
-my-repo/skills/deploy/SKILL.md                ->  deploy
-my-repo/.claude/skills/review/SKILL.md        ->  claude-review
-my-repo/plugins/tools/skills/publish/SKILL.md ->  plugins-tools-publish
-```
-
-All three at once is normal, and `auto` takes all three. It stops at a kind
-directory and never walks into a skill, so a skill shipping its own
-`commands/` directory contributes its files to that skill rather than commands
-to the repo. `.git` and `node_modules` are never walked, and the search gives up
-five levels down — use `paths` for anything deeper.
-
-Skills nested below a kind directory are found at any depth in every layout —
-see [ids](#ids).
-
-#### Scanning only part of a repo
-
-```json
-"source": { "git": "owner/monorepo", "paths": ["packages/web", "packages/api"] }
-```
-
-**Ids stay relative to the repo root**, not to the scan path, so
-`packages/web/skills/deploy` is `packages-web-deploy`. That means adding or
-removing a `paths` entry never renames anything else, and two paths that each
-hold a `deploy` skill give you two distinct skills instead of one silently
-overwriting the other.
-
-A path that climbs out of the source is refused.
-
-#### `dirs`
-
-Renames a kind's subdirectory:
-
-```json
-"source": { "path": "~/src/my-skills", "dirs": { "command": "prompts" } }
-```
-
-It applies to `auto` too — that is the name `auto` goes looking for.
-
-### Namespacing a source
-
-Ids are unique *within* a source but not across sources. Two repos can each hold
-a `pdf-export` skill, and without a prefix the second wire installed silently
-overwrites the first.
-
-```json
-{ "name": "work", "prefix": "work", "source": { "path": "~/src/team-skills/plugins" }, "targets": ["claude"] }
-```
-
-Every id from that wire becomes `work-<id>` — `work-pdf-export` alongside your own
-`pdf-export`.
-
-The prefix is applied **after** `only` and `exclude`, so patterns match ids as
-they appear in the repo rather than the prefixed form.
-
-Adding or changing a prefix renames every artifact the wire installs. The
-artifacts under the old names are not left stranded: skillwire records what each
-wire installed, so the next `--prune` removes them. See
-[Prune is bounded](#prune-is-bounded).
-
-> **If two wires share a target, give at least one of them a prefix.** Without
-> one, overlapping ids overwrite each other on every run.
+`f` edits the patterns directly, with a live count of what each one matches.
 
 ## Filtering
 
@@ -391,12 +271,15 @@ skillwire targets             show which targets are present on this machine
 | flag | meaning |
 |---|---|
 | `-c, --config <path>` | config file to use |
+| `-i, --interactive` | open the [terminal UI](#interactive) |
 | `--wire <name>` | only this wire. Repeatable |
 | `--target <id>` | only this target. Repeatable |
 | `--kind <k>` | only this kind. Repeatable |
 | `--dry-run` | report what would happen, write nothing |
 | `--prune` | remove artifacts this wire installed and no longer produces |
 | `--no-fetch` | use the cached clone of a git source without updating it |
+
+Each run reports what changed since the last one — `+ skill:x` for anything new, and a line per artifact pruned — rather than only a count. Both come from the manifest, so they are exact. Lists longer than twenty are summarised.
 
 **Always `--dry-run` before `--prune`.** Prune deletes, and a mistaken filter is much cheaper to notice in a report than after the fact.
 
@@ -493,6 +376,8 @@ Deleting a Multica skill also drops its agent assignments. There's no way to rem
 **Fewer artifacts than expected** — check `skillwire list` first. A directory under `skills/` with no `SKILL.md` isn't a skill; skillwire looks one level deeper, and if that yields nothing the directory is ignored. Filters apply in the order kinds → only → exclude.
 
 **A filter caught more than intended** — an unscoped pattern applies to every kind. Use `skill:pattern` to restrict it.
+
+**`the interactive UI needs a terminal`** — `-i` was run with stdin or stdout redirected. It draws to the screen and reads raw keys, so it needs both attached.
 
 **Skills installed but never used by Claude Code** — you're probably over the skill-listing budget; see [claude](#claude--claude-code).
 
