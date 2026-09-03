@@ -80,11 +80,32 @@ async function fixture(over: Partial<Wire> = {}) {
     src,
     runs,
     screen: (): string => app.lastFrame() ?? '',
+    /**
+     * Send keys, and wait for the screen to finish reacting.
+     *
+     * A fixed pause after a keystroke is a race on a loaded machine: the
+     * assertion reads the frame from before the render and reports the feature
+     * as broken. Waiting for the frame to stop changing is what a person
+     * looking at the terminal does.
+     */
     press: async (...keys: string[]) => {
       for (const k of keys) {
         app.stdin.write(k);
-        await tick();
+        await tick(10);
+        let last = '';
+        for (let i = 0, still = 0; i < 80 && still < 3; i++) {
+          const frame = app.lastFrame() ?? '';
+          still = frame === last ? still + 1 : 0;
+          last = frame;
+          await tick(10);
+        }
       }
+    },
+
+    /** Wait for something to appear on screen, then assert it did. */
+    expect: async (pattern: RegExp, why?: string): Promise<void> => {
+      for (let i = 0; i < 200 && !pattern.test(app.lastFrame() ?? ''); i++) await tick(15);
+      assert.match(app.lastFrame() ?? '', pattern, why);
     },
     /**
      * The config on disk.
@@ -212,12 +233,12 @@ test('s narrows the list to what is selected, then to what is not', async () => 
   try {
     await f.press(KEY.enter, ' ');
     await f.press('s');
-    assert.match(f.screen(), /showing selected/);
+    await f.expect(/showing selected/);
     assert.match(f.screen(), /beta/);
     assert.doesNotMatch(f.screen(), /\[x\] alpha/);
 
     await f.press('s');
-    assert.match(f.screen(), /showing unselected/);
+    await f.expect(/showing unselected/);
     assert.match(f.screen(), /alpha/);
     assert.doesNotMatch(f.screen(), /\[x\] gamma/);
 
@@ -248,7 +269,7 @@ test('the picker refuses to leave a source with nothing selected', async () => {
   const f = await fixture({ only: ['skill:alpha'] });
   try {
     await f.press(KEY.enter, ' ');
-    assert.match(f.screen(), /installs nothing/);
+    await f.expect(/installs nothing/);
     assert.deepEqual((await f.saved()).wires[0]!.only, ['skill:alpha'], 'unchanged');
   } finally {
     f.done();
@@ -260,7 +281,7 @@ test('an artifact an exclude glob covers reports the glob instead of failing sil
   const f = await fixture({ exclude: ['skill:b*'] });
   try {
     await f.press(KEY.enter, 'j', ' ');
-    assert.match(f.screen(), /excluded by "skill:b\*"/);
+    await f.expect(/excluded by "skill:b\*"/);
     assert.deepEqual((await f.saved()).wires[0]!.exclude, ['skill:b*'], 'nothing was rewritten');
   } finally {
     f.done();
@@ -275,7 +296,7 @@ test('a glob typed in the filter editor is kept as a glob', async () => {
     for (const ch of 'skill:b*') await f.press(ch);
     await f.press(KEY.enter);
     assert.deepEqual((await f.saved(has('exclude'))).wires[0]!.exclude, ['skill:b*']);
-    assert.match(f.screen(), /1 match/, 'the editor says what a pattern catches');
+    await f.expect(/1 match/, 'the editor says what a pattern catches');
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
@@ -302,7 +323,7 @@ test('i installs with --prune, because the ticks are what should be installed', 
     await tick(140);
     assert.deepEqual(f.runs, [{ wires: ['mine'], dryRun: false, prune: true, noFetch: true }]);
     assert.match(f.screen(), /with --prune/);
-    assert.match(f.screen(), /3 installed/, 'the output streams into the UI');
+    await f.expect(/3 installed/, 'the output streams into the UI');
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
@@ -316,7 +337,7 @@ test('D previews the same run, deletions included', async () => {
     await tick(140);
     assert.equal(f.runs[0]!.dryRun, true);
     assert.equal(f.runs[0]!.prune, true);
-    assert.match(f.screen(), /nothing was written/);
+    await f.expect(/nothing was written/);
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
@@ -400,7 +421,7 @@ test('a duplicate name is refused, since --wire matches on it', async () => {
     for (const ch of f.src) await f.press(ch);
     await f.press(KEY.ctrlS);
     await tick(100);
-    assert.match(f.screen(), /already a wire "mine"/);
+    await f.expect(/already a wire "mine"/);
     assert.equal((await f.saved()).wires.length, 1);
   } finally {
     f.done();
@@ -432,7 +453,7 @@ test('deleting asks first, and says what it does not do', async () => {
 
     await f.press('d', 'y');
     assert.equal((await f.saved((c) => !c.wires.length)).wires.length, 0);
-    assert.match(f.screen(), /No sources yet/);
+    await f.expect(/No sources yet/);
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
@@ -557,7 +578,7 @@ test('clicking a key in the footer presses it', async () => {
     const at = rowOf(screen, 'showing');
     const column = screen.split('\n')[at - 1]!.indexOf('s showing') + 1;
     await f.press(clickAt(column, at));
-    assert.match(f.screen(), /showing selected/);
+    await f.expect(/showing selected/);
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
@@ -581,7 +602,7 @@ test('m turns the mouse off, and says why you would want to', async () => {
   const f = await fixture();
   try {
     await f.press('m');
-    assert.match(f.screen(), /selects text again/);
+    await f.expect(/selects text again/);
     await f.press(KEY.enter);
     const before = await f.saved();
     await f.press(clickAt(10, rowFor(f.screen(), 'beta')));
