@@ -32,6 +32,10 @@ const KEY = {
 
 const tick = (ms = 40): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/** What a change should produce, for `saved()` to wait on. */
+const has = (field: 'only' | 'exclude') => (c: Config): boolean => !!c.wires[0]?.[field];
+const clean = (c: Config): boolean => !c.wires[0]?.only && !c.wires[0]?.exclude;
+
 async function fixture(over: Partial<Wire> = {}) {
   const root = await mkdtemp(join(tmpdir(), 'skillwire-ink-'));
   const src = join(root, 'src');
@@ -83,25 +87,21 @@ async function fixture(over: Partial<Wire> = {}) {
       }
     },
     /**
-     * The config on disk, once it has stopped changing.
+     * The config on disk.
      *
      * Saving is asynchronous, so reading a fixed moment after a keypress is a
-     * race the test loses on a slow machine — and it loses by reading the
-     * previous state, which looks exactly like the feature not working.
+     * race — and it is lost by reading the previous state, which looks exactly
+     * like the feature not working. Pass what the change should produce and
+     * this waits for it; polling for the file merely to stop changing cannot
+     * tell "finished" from "not started".
      */
-    saved: async (): Promise<Config> => {
-      let last = '';
-      let stable = 0;
-      for (let i = 0; i < 80; i++) {
-        const raw = await readFile(path, 'utf8');
-        stable = raw === last ? stable + 1 : 0;
-        last = raw;
-        // Three reads the same, not one: a save that has not started yet also
-        // reads the same twice, and would be mistaken for a finished one.
-        if (stable >= 3) break;
+    saved: async (want?: (c: Config) => boolean): Promise<Config> => {
+      let last = JSON.parse(await readFile(path, 'utf8')) as Config;
+      for (let i = 0; want && !want(last) && i < 200; i++) {
         await tick(15);
+        last = JSON.parse(await readFile(path, 'utf8')) as Config;
       }
-      return JSON.parse(last) as Config;
+      return last;
     },
     done: () => app.unmount(),
   };
@@ -141,7 +141,7 @@ test('unticking writes the config immediately', async () => {
   const f = await fixture();
   try {
     await f.press(KEY.enter, ' ');
-    assert.deepEqual((await f.saved()).wires[0]!.exclude, ['skill:alpha']);
+    assert.deepEqual((await f.saved(has('exclude'))).wires[0]!.exclude, ['skill:alpha']);
     assert.match(f.screen(), /2 of 3 selected/);
   } finally {
     f.done();
@@ -153,7 +153,7 @@ test('ticking it back leaves no filter behind', async () => {
   const f = await fixture();
   try {
     await f.press(KEY.enter, ' ', ' ');
-    const saved = await f.saved();
+    const saved = await f.saved(clean);
     assert.equal(saved.wires[0]!.exclude, undefined);
     assert.equal(saved.wires[0]!.only, undefined);
   } finally {
@@ -168,9 +168,9 @@ test('hjkl moves like the arrows do', async () => {
     await f.press('l');
     assert.match(f.screen(), /The first skill/);
     await f.press('j', ' ');
-    assert.deepEqual((await f.saved()).wires[0]!.exclude, ['skill:beta']);
+    assert.deepEqual((await f.saved(has('exclude'))).wires[0]!.exclude, ['skill:beta']);
     await f.press('k', ' ');
-    assert.deepEqual((await f.saved()).wires[0]!.only, ['skill:gamma']);
+    assert.deepEqual((await f.saved(has('only'))).wires[0]!.only, ['skill:gamma']);
     await f.press('h');
     assert.match(f.screen(), /SELECTED/);
   } finally {
@@ -183,9 +183,9 @@ test('G and g jump to the ends', async () => {
   const f = await fixture();
   try {
     await f.press(KEY.enter, 'G', ' ');
-    assert.deepEqual((await f.saved()).wires[0]!.exclude, ['skill:gamma']);
+    assert.deepEqual((await f.saved(has('exclude'))).wires[0]!.exclude, ['skill:gamma']);
     await f.press('g', ' ');
-    assert.deepEqual((await f.saved()).wires[0]!.only, ['skill:beta']);
+    assert.deepEqual((await f.saved(has('only'))).wires[0]!.only, ['skill:beta']);
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
@@ -196,7 +196,7 @@ test('arrow keys do the same as hjkl', async () => {
   const f = await fixture();
   try {
     await f.press(KEY.right, KEY.down, ' ');
-    assert.deepEqual((await f.saved()).wires[0]!.exclude, ['skill:beta']);
+    assert.deepEqual((await f.saved(has('exclude'))).wires[0]!.exclude, ['skill:beta']);
     await f.press(KEY.left);
     assert.match(f.screen(), /SELECTED/);
   } finally {
@@ -235,7 +235,7 @@ test('bulk keys act on what the list is showing, not the whole source', async ()
     await f.press(KEY.enter, ' ');
     await f.press('s', 's');
     await f.press('a');
-    const saved = await f.saved();
+    const saved = await f.saved(clean);
     assert.equal(saved.wires[0]!.exclude, undefined);
     assert.equal(saved.wires[0]!.only, undefined);
   } finally {
@@ -274,7 +274,7 @@ test('a glob typed in the filter editor is kept as a glob', async () => {
     await f.press(KEY.enter, 'f', 'x');
     for (const ch of 'skill:b*') await f.press(ch);
     await f.press(KEY.enter);
-    assert.deepEqual((await f.saved()).wires[0]!.exclude, ['skill:b*']);
+    assert.deepEqual((await f.saved(has('exclude'))).wires[0]!.exclude, ['skill:b*']);
     assert.match(f.screen(), /1 match/, 'the editor says what a pattern catches');
   } finally {
     f.done();
@@ -286,7 +286,7 @@ test('turning off a kind stops it being read at all', async () => {
   const f = await fixture();
   try {
     await f.press(KEY.enter, 'K', ' ');
-    assert.deepEqual((await f.saved()).wires[0]!.kinds, ['command', 'agent']);
+    assert.deepEqual((await f.saved((c) => !!c.wires[0]!.kinds)).wires[0]!.kinds, ['command', 'agent']);
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
@@ -380,7 +380,7 @@ test('a source added in the form lands in the config in the shape the CLI reads'
     await f.press(KEY.ctrlS);
     await tick(140);
 
-    const saved = await f.saved();
+    const saved = await f.saved((c) => c.wires.length === 2);
     assert.equal(saved.wires.length, 2);
     assert.equal(saved.wires[1]!.name, 'second');
     assert.equal(saved.wires[1]!.source.path, f.src);
@@ -431,8 +431,7 @@ test('deleting asks first, and says what it does not do', async () => {
     assert.equal((await f.saved()).wires.length, 1);
 
     await f.press('d', 'y');
-    await tick(100);
-    assert.equal((await f.saved()).wires.length, 0);
+    assert.equal((await f.saved((c) => !c.wires.length)).wires.length, 0);
     assert.match(f.screen(), /No sources yet/);
   } finally {
     f.done();
@@ -498,7 +497,7 @@ test('clicking a skill ticks it', async () => {
   try {
     await f.press(KEY.enter);
     await f.press(clickAt(10, rowFor(f.screen(), 'beta')));
-    assert.deepEqual((await f.saved()).wires[0]!.exclude, ['skill:beta']);
+    assert.deepEqual((await f.saved(has('exclude'))).wires[0]!.exclude, ['skill:beta']);
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
@@ -511,7 +510,7 @@ test('clicking the same skill again unticks it', async () => {
     await f.press(KEY.enter);
     const at = rowFor(f.screen(), 'gamma');
     await f.press(clickAt(10, at), clickAt(10, at));
-    const saved = await f.saved();
+    const saved = await f.saved(clean);
     assert.equal(saved.wires[0]!.exclude, undefined);
     assert.equal(saved.wires[0]!.only, undefined);
   } finally {
@@ -604,7 +603,7 @@ test('the list does not shift under the pointer when a filter appears', async ()
     await f.press(clickAt(10, before));
     assert.equal(rowFor(f.screen(), 'gamma'), before, f.screen());
     await f.press(clickAt(10, before));
-    const saved = await f.saved();
+    const saved = await f.saved(clean);
     assert.equal(saved.wires[0]!.exclude, undefined, 'the same row, ticked back');
     assert.equal(saved.wires[0]!.only, undefined);
   } finally {
