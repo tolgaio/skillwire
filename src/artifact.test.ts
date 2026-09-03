@@ -36,9 +36,27 @@ test('keeps nested values as raw text rather than dropping the artifact', () => 
   assert.match(meta.metadata!, /other: thing/);
 });
 
-test('handles values containing colons', () => {
+test('a quoted value loses the quotes, which are YAML syntax not text', () => {
+  // Quoting is how a description containing a colon gets written at all. The
+  // quotes are not part of it, and showing them in a listing is just wrong.
   const { meta } = parseFrontmatter('---\ndescription: "auth: tokens, keys"\n---\nx\n');
-  assert.equal(meta.description, '"auth: tokens, keys"');
+  assert.equal(meta.description, 'auth: tokens, keys');
+  assert.equal(parseFrontmatter("---\nname: 'a: b'\n---\nx\n").meta.name, 'a: b');
+});
+
+test('quotes inside a value survive', () => {
+  assert.equal(
+    parseFrontmatter('---\ndescription: he said "no"\n---\nx\n').meta.description,
+    'he said "no"',
+  );
+  assert.equal(
+    parseFrontmatter('---\ndescription: "he said \\"no\\""\n---\nx\n').meta.description,
+    'he said "no"',
+  );
+});
+
+test('an unbalanced quote is left alone rather than half-stripped', () => {
+  assert.equal(parseFrontmatter('---\ndescription: "oops\n---\nx\n').meta.description, '"oops');
 });
 
 test('handles a key with an empty value', () => {
@@ -86,4 +104,61 @@ test('withName rewrites only the name line', () => {
 test('withName is idempotent', () => {
   const once = withName('---\nname: a\n---\nb\n', 'x');
   assert.equal(withName(once, 'x'), once);
+});
+
+test('a literal block scalar keeps its line breaks', () => {
+  const { meta } = parseFrontmatter(
+    '---\nname: a\ndescription: |\n  first line\n  second line\n---\nbody\n',
+  );
+  assert.equal(meta.description, 'first line\nsecond line');
+});
+
+test('a folded block scalar joins the lines the author wrapped', () => {
+  // `>` means the breaks are the author's editor, not their intent. Keeping
+  // them would put a newline in the middle of every description.
+  const { meta } = parseFrontmatter(
+    '---\ndescription: >\n  one two\n  three four\n---\nbody\n',
+  );
+  assert.equal(meta.description, 'one two three four');
+});
+
+test('a folded scalar keeps paragraph breaks', () => {
+  const { meta } = parseFrontmatter(
+    '---\ndescription: >\n  para one\n  still one\n\n  para two\n---\nb\n',
+  );
+  assert.equal(meta.description, 'para one still one\npara two');
+});
+
+test('chomping and indent indicators are accepted', () => {
+  for (const ind of ['|-', '|+', '>-', '>+']) {
+    const { meta } = parseFrontmatter(`---\ndescription: ${ind}\n  text here\n---\nb\n`);
+    assert.equal(meta.description, 'text here', ind);
+  }
+});
+
+test('the indicator itself never becomes the value', () => {
+  // The bug this replaced: the description read ">" and the text was lost.
+  const { meta } = parseFrontmatter('---\ndescription: >\n  real text\n---\nb\n');
+  assert.doesNotMatch(meta.description!, /^[|>]/);
+});
+
+test('a block scalar ends at the next key', () => {
+  const { meta } = parseFrontmatter(
+    '---\ndescription: |\n  the text\nname: after\n---\nb\n',
+  );
+  assert.equal(meta.description, 'the text');
+  assert.equal(meta.name, 'after');
+});
+
+test('a block scalar is dedented by its own indentation', () => {
+  const { meta } = parseFrontmatter(
+    '---\ndescription: |\n    deep one\n    deep two\n---\nb\n',
+  );
+  assert.equal(meta.description, 'deep one\ndeep two');
+});
+
+test('an empty block scalar is empty, not the indicator', () => {
+  const { meta } = parseFrontmatter('---\ndescription: |\nname: x\n---\nb\n');
+  assert.equal(meta.description, '');
+  assert.equal(meta.name, 'x');
 });

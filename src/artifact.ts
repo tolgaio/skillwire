@@ -81,18 +81,85 @@ export function parseFrontmatter(raw: string): {
   const body = raw.slice(raw.indexOf('\n', end + 1) + 1);
 
   const meta: Record<string, string> = {};
+  const lines = block.split('\n');
   let key: string | null = null;
-  for (const line of block.split('\n')) {
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
     const m = /^([A-Za-z_][A-Za-z0-9_-]*):\s?(.*)$/.exec(line);
-    if (m) {
-      key = m[1]!;
-      meta[key] = m[2] ?? '';
-    } else if (key && /^\s+\S/.test(line)) {
-      meta[key] += '\n' + line;
+    if (!m) {
+      if (key && /^\s+\S/.test(line)) meta[key] += '\n' + line;
+      continue;
     }
+
+    key = m[1]!;
+    const value = (m[2] ?? '').trim();
+    const scalar = /^([|>])[-+]?\d*$/.exec(value);
+    if (!scalar) {
+      meta[key] = unquote(value);
+      continue;
+    }
+
+    // A block scalar — `description: |` or `description: >`, both common in
+    // real skills. Without this the value would be the indicator itself and
+    // the text would be lost, which is worse than not parsing it at all.
+    const collected: string[] = [];
+    let indent = -1;
+    let j = i + 1;
+    for (; j < lines.length; j++) {
+      const l = lines[j]!;
+      if (!l.trim()) {
+        collected.push('');
+        continue;
+      }
+      const lead = l.length - l.trimStart().length;
+      // A block's content is indented past its key. Without this an empty
+      // block would swallow whatever key came next as its text.
+      if (lead === 0) break;
+      if (indent === -1) indent = lead;
+      if (lead < indent) break;
+      collected.push(l.slice(indent));
+    }
+    while (collected.length && !collected[collected.length - 1]) collected.pop();
+    meta[key] = scalar[1] === '>' ? fold(collected) : collected.join('\n');
+    i = j - 1;
   }
+
   for (const k of Object.keys(meta)) meta[k] = meta[k]!.trim();
   return { meta, body };
+}
+
+/**
+ * Drop the quotes YAML uses to protect a value, keeping any inside it.
+ *
+ * `description: "Use this when: …"` is quoted because of the colon, not
+ * because the author wanted a quotation mark at the front of every listing.
+ */
+function unquote(value: string): string {
+  const q = value[0];
+  if ((q !== '"' && q !== "'") || value.length < 2 || value[value.length - 1] !== q) return value;
+  const inner = value.slice(1, -1);
+  return q === '"' ? inner.replace(/\\(["\\])/g, '$1') : inner.replace(/''/g, "'");
+}
+
+/**
+ * YAML folded style: line breaks within a paragraph become spaces, and a blank
+ * line separates paragraphs. The author wrapped it to fit their editor, not
+ * because they wanted the breaks.
+ */
+function fold(lines: string[]): string {
+  const out: string[] = [];
+  let paragraph: string[] = [];
+  for (const line of lines) {
+    if (line.trim()) {
+      paragraph.push(line.trim());
+      continue;
+    }
+    if (paragraph.length) out.push(paragraph.join(' '));
+    paragraph = [];
+  }
+  if (paragraph.length) out.push(paragraph.join(' '));
+  return out.join('\n');
 }
 
 async function walk(root: string, dir = root): Promise<string[]> {
