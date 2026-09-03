@@ -1,18 +1,10 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises';
-import { buildSource, buildTarget, loadConfig, type Wire } from './config.js';
-import { KINDS, type Artifact, type Kind } from './artifact.js';
-import { selectArtifacts } from './filter.js';
-import { previouslyInstalled, readManifest, record, writeManifest } from './manifest.js';
+import { buildTarget, loadConfig } from './config.js';
+import { type Kind } from './artifact.js';
+import { message, run } from './run.js';
+import { c } from './style.js';
 import type { Target } from './targets/base.js';
-
-const c = {
-  dim: (s: string) => `\x1b[2m${s}\x1b[0m`,
-  bold: (s: string) => `\x1b[1m${s}\x1b[0m`,
-  green: (s: string) => `\x1b[32m${s}\x1b[0m`,
-  yellow: (s: string) => `\x1b[33m${s}\x1b[0m`,
-  red: (s: string) => `\x1b[31m${s}\x1b[0m`,
-};
 
 const USAGE = `
 ${c.bold('skillwire')} — push Agent Skills from one source into every agent that can use them
@@ -112,104 +104,30 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  let failed = false;
-  let manifest = await readManifest();
-
-  for (const wire of wires) {
-    const source = buildSource(wire.source);
-    let sourceRoot: string;
-    try {
-      sourceRoot = await source.prepare({
-        fetch: !args.noFetch,
-        onProgress: (m) => console.log(`\n${c.bold(wire.name)}  ${c.dim(m)}`),
-      });
-    } catch (err) {
-      failed = true;
-      console.log(
-        `\n${c.bold(wire.name)}  ${c.red('fail')}  ${err instanceof Error ? err.message : String(err)}`,
-      );
-      continue;
-    }
-    const all = await source.read(wire.kinds ?? KINDS);
-    let skills = selectArtifacts(all, wire);
-    if (args.kinds.length) skills = skills.filter((s) => args.kinds.includes(s.kind));
-    // After filtering, so patterns match ids as they appear in the repo.
-    if (wire.prefix) {
-      const pre = wire.prefix.replace(/-+$/, '');
-      skills = skills.map((s) => ({ ...s, id: `${pre}-${s.id}` }));
-    }
-
-    console.log(
-      `\n${c.bold(wire.name)}  ${c.dim(source.name)}  ${skills.length} item${skills.length === 1 ? '' : 's'}` +
-        (skills.length !== all.length ? c.dim(` (of ${all.length})`) : ''),
-    );
-
-    if (args.cmd === 'list') {
-      for (const kind of KINDS) {
-        const of = skills.filter((s) => s.kind === kind);
-        if (!of.length) continue;
-        console.log(`  ${c.dim(kind + 's')}`);
-        for (const s of of) {
-          const group = s.group ? c.dim(`${s.group}/`) : '';
-          console.log(`    ${group}${s.id}  ${c.dim(`${s.files.length} file${s.files.length === 1 ? '' : 's'}`)}`);
-        }
-      }
-      continue;
-    }
-
-    if (args.cmd !== 'install') {
-      console.error(c.red(`unknown command "${args.cmd}"`));
-      return 1;
-    }
-
-    for (const tc of wire.targets) {
-      const target = buildTarget(tc);
-      if (args.targets.length && !args.targets.includes(target.id)) continue;
-
-      if (!(await target.detect())) {
-        console.log(`  ${c.dim('skip')}    ${target.id}  ${c.dim('not present on this machine')}`);
-        continue;
-      }
-
-      try {
-        const res = await target.install(skills, {
-          dryRun: args.dryRun,
-          prune: args.prune,
-          previouslyInstalled: previouslyInstalled(manifest, wire.name, target.id),
-          sourceRoot,
-        });
-        // Record what this wire now owns at this target, so a later run can
-        // prune artifacts it stops producing — including ones whose ids changed
-        // because a prefix was added or the layout moved.
-        if (!args.dryRun) {
-          const owned = skills
-            .filter((a) => target.kinds.includes(a.kind))
-            .map((a) => `${a.kind}:${a.id}`);
-          manifest = record(manifest, wire.name, target.id, owned);
-        }
-        const verb = args.dryRun ? c.yellow('would') : c.green('ok   ');
-        console.log(`  ${verb}    ${target.id}  ${res.installed.length} installed`);
-        for (const s of res.skipped) {
-          console.log(`          ${c.yellow('!')} ${s.id}: ${s.reason}`);
-        }
-      } catch (err) {
-        failed = true;
-        console.log(
-          `  ${c.red('fail')}    ${target.id}  ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
+  if (args.cmd !== 'install' && args.cmd !== 'list') {
+    console.error(c.red(`unknown command "${args.cmd}"`));
+    return 1;
   }
 
-  if (!args.dryRun) await writeManifest(manifest);
-
-  return failed ? 1 : 0;
+  return run(
+    config,
+    {
+      wires: args.wires,
+      targets: args.targets,
+      kinds: args.kinds,
+      dryRun: args.dryRun,
+      prune: args.prune,
+      noFetch: args.noFetch,
+      listOnly: args.cmd === 'list',
+    },
+    (line) => console.log(line),
+  );
 }
 
 main().then(
   (code) => process.exit(code),
   (err) => {
-    console.error(c.red(err instanceof Error ? err.message : String(err)));
+    console.error(c.red(message(err)));
     process.exit(1);
   },
 );
