@@ -1,7 +1,7 @@
 {
   "name": "skillwire",
-  "version": "0.0.1",
-  "description": "Push Agent Skills from one source of truth into every agent that can use them \u2014 including ones that aren't filesystems.",
+  "version": "0.0.2",
+  "description": "Push Agent Skills from one source of truth into every agent that can use them — including ones that aren't filesystems.",
   "keywords": [
     "agent-skills",
     "claude-code",

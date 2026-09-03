@@ -16,159 +16,60 @@ Three things count as breaking, all of them user-visible:
 
 ---
 
-## Unreleased
+## 0.0.2 — 2026-09-03
 
 ### Added
 
-- **A terminal UI**, `skillwire -i`. Add, edit, delete and fetch sources; browse
-  what each one holds with names and descriptions; tick the artifacts you want.
+**A terminal UI** — `skillwire -i`. Add, edit, delete and fetch sources, browse
+what each one holds with names and descriptions, tick what you want, install.
+Keyboard or mouse. Built on [Ink](https://github.com/vadimdemedes/ink); the CLI
+keeps no runtime dependencies of its own, since the UI loads only when opened.
 
-  The config file is the only state — every change is written straight back, so
-  quitting the UI and running `skillwire install` does exactly what the screen
-  said, and a file edited by hand reads back the same way.
+The config file stays the only state. Every change is written straight back, so
+quitting the UI and running `skillwire install` does exactly what the screen
+said, and a file edited by hand reads back the same way. Ticking a box is an
+edit to `only`/`exclude`, made as small as possible, so a glob you wrote
+survives being near a box you clicked.
 
-  Ticking a box is an edit to `only`/`exclude`, made as small as possible: a
-  glob you wrote survives being near a box you clicked. Where the filter
-  language cannot express a change — a single artifact inside an excluded glob,
-  since `exclude` has the last word — the UI says which pattern is responsible
-  instead of rewriting it into something that means something else.
+**Git sources** — a wire can read from a repository rather than a local
+directory:
 
-  `i` installs, always with `--prune`: what is ticked is the whole of what that
-  source should have installed, and an install that only ever added would make
-  the checkboxes a description of nothing. `D` previews it.
+```json
+"source": { "git": "owner/name", "ref": "v2" }
+```
 
-  `s` cycles the list between all, selected and unselected, because five hundred
-  skills is not reviewable by scrolling. `/` searches, and the bulk keys act on
-  what the list is showing rather than the whole source.
+`owner/name` means GitHub; anything else is passed to git as written. Auth is
+git's own — an SSH key or a credential helper — and skillwire never handles a
+token. Clones are shallow and cached; `--no-fetch` works offline.
 
-  Arrows and vim keys both work, `?` shows every binding for the screen you are
-  on, a breadcrumb says where you are, and a panel under the list carries the
-  full description of the row under the cursor.
+**`layout: "auto"`** finds skill, command and agent directories wherever they
+are in a repo — at the root, under `.claude/`, one per plugin, or all three at
+once. It is the default for a git source, since a repo you point at is not
+necessarily one you laid out. **`paths`** narrows the scan to part of a source.
 
-  Built on [Ink](https://github.com/vadimdemedes/ink) and React. Flexbox is
-  what buys the side panel and a layout that survives any terminal size without
-  a single row calculation, and Ink's own test renderer means the picker is
-  driven through the real component tree in the suite — `stdin.write` for keys,
-  `lastFrame()` for what a terminal would show.
+### Changed
 
-  The CLI keeps no runtime dependencies of its own: the UI is a dynamic import,
-  so `skillwire install` never loads it.
-
-  The row under the cursor is a grey bar across the panel, in every list — a
-  marker at the start of the line is not enough to find yourself by in a list of
-  five hundred near-identical names. It recolours nothing on the row, so a green
-  tick stays a green tick; `SKILLWIRE_HIGHLIGHT` picks a different colour for a
-  terminal grey does not suit.
-
-  **The mouse works**: click a skill to tick it, a breadcrumb to go back to it,
-  a key in the footer to press it, and the wheel to scroll. Ink has no mouse
-  API, so the terminal is asked to report clicks and the reports are parsed out
-  of the input stream before any screen can read them as keystrokes. Regions
-  are measured from Ink's own layout rather than calculated, so they stay right
-  when the terminal resizes or a panel appears. `m` turns tracking off, because
-  while it is on the terminal stops selecting text on drag.
-
-- **Git sources.** A wire can read from a repository instead of a local
-  directory:
-
-  ```json
-  "source": { "git": "owner/name", "ref": "v2" }
-  ```
-
-  `owner/name` means GitHub; anything else is passed to git as written, so any
-  host works. Authentication is git's own — an SSH key or a credential helper —
-  and skillwire never takes, stores or logs a token. Clones are shallow, cached
-  under `~/.cache/skillwire/repos/`, and reset on every fetch so a force-push
-  cannot strand a stale artifact. `--no-fetch` reads the cache without the
-  network.
-
-  A cloned repo is then read exactly as a directory is, so ids, filtering,
-  prefixes and prune are unchanged.
-
-- **`layout: "auto"`**, which finds the kind directories wherever they are —
-  at the root, under `.claude/`, one per plugin, or all three at once. It is the
-  default for a git source, since a repo you point at is not necessarily one you
-  laid out. It stops at a kind directory and never walks into a skill, so a
-  skill shipping its own `commands/` does not contribute commands to the repo.
-
-- **`paths`**, scanning only part of a source. Ids stay relative to the source
-  root rather than to the scan path, so adding an entry never renames anything
-  else, and two paths that each hold a `deploy` skill produce two distinct ids
-  instead of one overwriting the other. A path that climbs out of the source is
-  refused.
-
-- Test suite covering the ZIP writer, frontmatter parsing, source discovery and
-  id derivation, filter matching, the manifest, and the filesystem target
-  including its prune and containment behaviour.
-- CI on Linux and macOS, Node 20/22/24.
-
-### Breaking
-
-- **Node 22 is now the minimum**, up from 20, which reached end of life in
-  April. It is what Ink requires, and nothing is published yet for the bump to
-  break.
+- **`--prune` is bounded by what skillwire installed**, recorded per wire and
+  target, rather than by what is absent from the source. Artifacts belonging to
+  another wire, installed by hand, or shipped by the harness are never removed —
+  and artifacts whose ids changed, because a prefix was added or a layout moved,
+  now *are*.
+- **`install` names what it added**, the way prune already named what it
+  removed.
+- Colour switches off when output is not a terminal, and honours `NO_COLOR`.
 
 ### Fixed
 
 - **YAML block scalars in frontmatter were dropped.** A skill written as
-  `description: |` or `description: >` — which many are — parsed to the
-  indicator character and lost the text. Descriptions are now read properly,
-  with folded style joining the lines the author wrapped.
+  `description: |` or `description: >` lost its description entirely.
+- **A source path that does not exist is now an error**, not an empty read — a
+  distinction that matters a great deal under `--prune`.
 
-- **`--prune` could not remove artifacts whose ids had changed.** Prune was
-  scoped to a wire's prefix, so anything installed under a *previous* naming
-  fell outside the scope and became unreachable: adding a prefix to an existing
-  wire installed a second, complete copy of everything and left the first behind
-  with no way to clean it up. Changing the source layout had the same effect.
+### Breaking
 
-  skillwire now records what each wire installed at each target, and prunes the
-  difference between that record and the current run. A rename is just "these
-  ids are no longer produced", so the old set is removed.
-
-  Artifacts installed before this release have no record and so cannot be
-  pruned; remove them once by hand.
-
-### Changed
-
-- **Prune is bounded by what skillwire installed, not by what is absent from the
-  source.** Artifacts belonging to another wire, installed by hand, or shipped
-  by the harness are never removed, and prune with no record does nothing.
-  Previously the prefix was the only thing standing between one wire's prune and
-  another wire's work; a wire without a prefix pruned everything it did not
-  recognise.
-
-- **`install` names what it added**, the way prune already named what it
-  removed. Every run reinstalls everything, so the count alone could not answer
-  the only question worth asking after ticking a box — did that one arrive? The
-  additions come from the same manifest prune reads, so they are exact rather
-  than inferred. Long lists are capped at twenty with a count for the rest.
-
-- **Colour is switched off when output is not a terminal**, and honours
-  `NO_COLOR`. `skillwire list | grep` no longer matches against escape
-  sequences.
-
-- **A source directory that does not exist is now an error** rather than an
-  empty read. A typo was previously indistinguishable from a repo with nothing
-  in it — and with `--prune`, the difference is everything the wire installed.
-
-- State is written to `~/.local/state/skillwire/manifest.json`, honouring
-  `XDG_STATE_HOME`. This is the first file skillwire keeps outside its targets.
-  Deleting it is safe — skillwire reinstalls, but forgets what it may clean up.
-
-- **An installed artifact now declares its id as its frontmatter `name`.**
-  Previously only Multica did this, because it keys on that field; filesystem
-  targets copied files verbatim, so a skill installed as `work-pdf-export` still
-  declared `name: pdf-export`. The id is the artifact's identity — it is what gets
-  installed, what filters match, and what a target calls it — and a file
-  claiming otherwise contradicts the directory it sits in. Any harness that
-  preferred the declared name over the location would have reintroduced exactly
-  the collisions flattening exists to prevent.
-
-  Source files are never modified; only the installed copy. Supporting files are
-  still copied byte for byte.
-
-- Filter matching moved out of the CLI into `src/filter.ts` so it can be tested
-  directly. No behaviour change.
+- **Node 22 is the minimum**, up from 20, which reached end of life in April.
+- Artifacts installed before this release have no prune record, so they cannot
+  be pruned automatically. Remove them once by hand.
 
 ---
 
