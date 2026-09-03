@@ -153,8 +153,14 @@ export async function loadConfig(explicit?: string): Promise<{ config: Config; p
  * only record of what each wire installs. Writing beside the target and
  * renaming makes the replacement a single step.
  */
+let writes = 0;
+
 export async function saveConfig(config: Config, path: string): Promise<void> {
-  const tmp = `${path}.${process.pid}.tmp`;
+  // A counter as well as the pid. Two saves overlap the moment someone presses
+  // two keys quickly: sharing one temp name, the first rename takes the file
+  // out from under the second, which then fails on a file that is no longer
+  // there. Every write gets its own.
+  const tmp = `${path}.${process.pid}.${writes++}.tmp`;
   await writeFile(tmp, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
   await rename(tmp, path);
 }

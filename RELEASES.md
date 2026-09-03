@@ -64,6 +64,9 @@ necessarily one you laid out. **`paths`** narrows the scan to part of a source.
   `description: |` or `description: >` lost its description entirely.
 - **A source path that does not exist is now an error**, not an empty read — a
   distinction that matters a great deal under `--prune`.
+- **Two saves in quick succession could fail.** The interactive UI writes the
+  config on every change, and two keypresses close together put two writes in
+  flight over one temporary file.
 
 ### Breaking
 

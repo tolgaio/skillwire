@@ -82,7 +82,27 @@ async function fixture(over: Partial<Wire> = {}) {
         await tick();
       }
     },
-    saved: async (): Promise<Config> => JSON.parse(await readFile(path, 'utf8')) as Config,
+    /**
+     * The config on disk, once it has stopped changing.
+     *
+     * Saving is asynchronous, so reading a fixed moment after a keypress is a
+     * race the test loses on a slow machine — and it loses by reading the
+     * previous state, which looks exactly like the feature not working.
+     */
+    saved: async (): Promise<Config> => {
+      let last = '';
+      let stable = 0;
+      for (let i = 0; i < 80; i++) {
+        const raw = await readFile(path, 'utf8');
+        stable = raw === last ? stable + 1 : 0;
+        last = raw;
+        // Three reads the same, not one: a save that has not started yet also
+        // reads the same twice, and would be mistaken for a finished one.
+        if (stable >= 3) break;
+        await tick(15);
+      }
+      return JSON.parse(last) as Config;
+    },
     done: () => app.unmount(),
   };
 }
