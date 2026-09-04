@@ -119,8 +119,10 @@ are on.
 The side panel previews whatever the cursor is on: its description in full —
 the list has room for a line of it, and a skill's is usually a paragraph saying
 when to use it — and then the file itself, with enough markdown rendering to
-read it by. `p` puts the panel away when the list wants the width, and on a
-narrow terminal it moves below the list.
+read it by. `⇧↑` and `⇧↓` scroll it, as does the wheel, and it says where in
+the file it is; shift is the modifier that means "the other pane", so plain
+arrows keep moving the list. `p` puts the panel away when the list wants the
+width, and on a narrow terminal it moves below the list.
 
 ### Keys
 
@@ -142,7 +144,7 @@ SKILLWIRE_HIGHLIGHT=blue skillwire -i
 | where | keys |
 |---|---|
 | Sources | `a` add · `e` edit · `d` delete · `f` fetch · `r` re-read · `i` install · `D` dry run · `I` install all · `q` quit |
-| Browse | `tab`/`1`–`3` switch kind · `space` tick or open a folder · `a` all · `n` none · `v` invert · `s` showing · `p` preview · `/` search · `f` filters · `K` kinds · `i` install |
+| Browse | `tab`/`1`–`3` switch kind · `space` tick or open a folder · `a` all · `n` none · `v` invert · `s` showing · `p` preview · `⇧↑`/`⇧↓` scroll it · `/` search · `f` filters · `K` kinds · `i` install |
 | Filters | `o` add an `only` · `x` add an `exclude` · `k` add an `include` · `d` delete |
 | Form | type to edit · `⏎` next field · `←→` change · `space` toggle a target · `^s` save |
 | Anywhere | `?` keys · `m` mouse on/off · `q` quit |

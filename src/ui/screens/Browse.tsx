@@ -1,7 +1,7 @@
 import { TextInput } from '@inkjs/ui';
-import { Box, Text} from 'ink';
+import { Box, Text, useBoxMetrics } from 'ink';
 import { useKeys } from '../useKeys.js';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useRegion } from '../mouse.js';
 import { KINDS, type Artifact, type Kind } from '../../artifact.js';
 import {
@@ -11,7 +11,7 @@ import {
   toggle,
 } from '../../selection.js';
 import { Cell, Check, List, listWindow, MARKS, Rest, rowColour } from '../components/List.js';
-import { Markdown } from '../components/Markdown.js';
+import { markdownRows, Markdown } from '../components/Markdown.js';
 import { Tabs, tabFor, type Tab } from '../components/Tabs.js';
 import { Chip, Panel, Row } from '../components/chrome.js';
 import { clampOffset, moveCursor, nav } from '../keys.js';
@@ -25,6 +25,7 @@ export const BROWSE_KEYS: [string, string][] = [
   ['v', 'invert what is listed'],
   ['tab  1 2 3', 'skills, commands, agents'],
   ['p', 'the preview panel, on or off'],
+  ['⇧ ↑ ↓', 'scroll the preview — the wheel does too'],
   ['s', 'show all / selected / unselected'],
   ['/', 'search names and descriptions'],
   ['f', 'edit the filter patterns'],
@@ -91,6 +92,8 @@ export function Browse({
   const [tab, setTab] = useState<Kind | null>(null);
   const [preview, setPreview] = useState(true);
   const [offset, setOffset] = useState(0);
+  const [scroll, setScroll] = useState(0);
+  const [measured, setMeasured] = useState(0);
   /** Folders opened by hand. A collection is a summary until asked otherwise. */
   const [opened, setOpened] = useState<Set<string>>(new Set());
 
@@ -187,6 +190,12 @@ export function Browse({
           return;
         }
         return store.pop();
+      }
+
+      // Shift is the modifier that means "the other pane": plain arrows move
+      // the list, shifted ones move what the list is showing you.
+      if (key.shift && (key.upArrow || key.downArrow)) {
+        return setScroll((s) => Math.max(0, s + (key.upArrow ? -1 : 1)));
       }
 
       const moved = tabFor(input, key, tabs, active);
@@ -293,6 +302,38 @@ export function Browse({
   const from = clampOffset(offset, at, entries.length, rows);
   if (from !== offset) setOffset(from);
   const window = listWindow(entries, from, rows, (e) => 'artifact' in e);
+
+  // The preview, as rows and a window onto them. Built here rather than inside
+  // the panel because the scroll position has to be clamped against the total,
+  // and only the caller holding the position can do that.
+  //
+  // The description is part of what scrolls. Fixed above the file, a long one
+  // took the whole panel and left the file with nowhere to be.
+  const previewColumn = Math.max(1, sideWidth - 4);
+  const previewRows = current
+    ? [
+        ...markdownRows(oneLine(current.description) || '(no description)', previewColumn),
+        <Text dimColor>{' '}</Text>,
+        <Text dimColor>{'─'.repeat(previewColumn)}</Text>,
+        <Text dimColor>{' '}</Text>,
+        ...markdownRows(current.body, previewColumn),
+      ]
+    : [];
+  // Measured, not counted. Every attempt to derive this from the terminal
+  // height had to know about the panel's border, title, facts, gap and footer,
+  // and each time one of those changed the window was wrong again — showing
+  // rows nobody could see, or reporting a position about nothing.
+  const previewLines = Math.max(1, measured || height - 6);
+  const previewAt = Math.max(0, Math.min(scroll, previewRows.length - previewLines));
+  if (previewAt !== scroll) setScroll(previewAt);
+
+  // A new artifact starts at the top of its own file, not partway down where
+  // the last one was left.
+  const [shown, setShown] = useState<string | undefined>(undefined);
+  if (current?.id !== shown) {
+    setShown(current?.id);
+    if (scroll) setScroll(0);
+  }
   const idWidth = Math.min(sideWidth ? 30 : 38, Math.max(14, ...matching.map((a) => a.id.length)));
 
   return (
@@ -406,8 +447,12 @@ export function Browse({
           <Detail
             artifact={current}
             width={sideWidth}
-            height={height}
+            rows={previewRows}
+            offset={previewAt}
+            lines={previewLines}
             onClose={() => setPreview(false)}
+            onScroll={(d) => setScroll((s) => s + d * 3)}
+            onLines={setMeasured}
           />
         ) : null}
       </Box>
@@ -437,43 +482,47 @@ export function Browse({
 function Detail({
   artifact,
   width,
-  height,
+  rows,
+  offset,
+  lines,
   onClose,
+  onScroll,
+  onLines,
 }: {
   artifact: Artifact;
   width: number;
-  height: number;
+  rows: ReactNode[];
+  offset: number;
+  lines: number;
   onClose: () => void;
+  onScroll: (direction: -1 | 1) => void;
+  onLines: (lines: number) => void;
 }): ReactNode {
-  const ref = useRegion({ onClick: onClose });
+  const close = useRegion({ onClick: onClose });
+  const body = useRegion({ onWheel: onScroll });
+  const { height: measured } = useBoxMetrics(body);
+  useEffect(() => {
+    if (measured) onLines(measured);
+  }, [measured, onLines]);
   const facts = [artifact.kind, `${artifact.files.length} file${artifact.files.length === 1 ? '' : 's'}`];
   if (artifact.group) facts.push(artifact.group);
-
-  // The description wraps to a known width, so how many rows it will take is
-  // arithmetic rather than a guess, and what is left is the file's budget.
-  const column = Math.max(1, width - 4);
-  const description = oneLine(artifact.description);
-  const spent = 6 + (description ? Math.ceil(description.length / column) + 1 : 0);
-  const budget = Math.max(1, height - spent);
+  const more = rows.length > lines;
 
   return (
     <Panel title={oneLine(artifact.id)} width={width} colour="cyan">
       <Box flexShrink={0}>
         <Text dimColor>{facts.join('  ·  ')}</Text>
       </Box>
-      {artifact.description ? (
-        <Box flexShrink={0} marginTop={1}>
-          {/* The panel wraps it to the column; keeping the author's own line
-              breaks on top of that gives a ragged half-width paragraph. */}
-          <Text>{description}</Text>
-        </Box>
-      ) : null}
-      <Box flexShrink={0} marginTop={1}>
-        <Text dimColor>{'─'.repeat(Math.max(0, width - 4))}</Text>
+      <Box ref={body} flexDirection="column" flexGrow={1} overflow="hidden" marginTop={1}>
+        <Markdown rows={rows} offset={offset} lines={lines} />
       </Box>
-      <Markdown text={artifact.body} width={column} lines={budget} />
-      <Box ref={ref} flexShrink={0} justifyContent="flex-end">
-        <Text dimColor>p ›</Text>
+      <Box flexShrink={0} justifyContent="space-between">
+        <Text dimColor>
+          {more ? `⇧↑↓  ${offset + 1}–${Math.min(rows.length, offset + lines)} of ${rows.length}` : ''}
+        </Text>
+        <Box ref={close}>
+          <Text dimColor>p ›</Text>
+        </Box>
       </Box>
     </Panel>
   );

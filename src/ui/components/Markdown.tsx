@@ -9,21 +9,25 @@ import type { ReactNode } from 'react';
  * dependency and a lot of behaviour for a panel whose job is to let you decide
  * whether you want the thing.
  */
-export function Markdown({ text, width, lines }: { text: string; width: number; lines: number }) {
+/**
+ * The whole file as rows, so a caller can hold a scroll position over it.
+ *
+ * Built in full rather than up to a budget: the panel has to know how much
+ * there is before it can say where in it you are.
+ */
+export function markdownRows(text: string, width: number): ReactNode[] {
+  // Unkeyed: rows from several calls get concatenated, and numbering each
+  // call from zero gave React duplicate keys — which it answers by reusing
+  // elements, so one artifact's preview showed pieces of another's.
   const rendered: ReactNode[] = [];
-  // Every line is its own unshrinkable row. Left shrinkable, Yoga squeezes
-  // rows out of the middle when the block is taller than the space, which
-  // reads as a file with lines missing from it rather than as one cut short.
-  const row = (key: number, node: ReactNode): ReactNode => (
-    <Box key={key} flexShrink={0}>
-      {node}
-    </Box>
-  );
+  const row = (_key: number, node: ReactNode): ReactNode => node;
   let fenced = false;
   let blank = 0;
 
   for (const raw of text.split('\n')) {
-    if (rendered.length >= lines) break;
+    // A ceiling, not a viewport: a pathological file should not become a
+    // hundred thousand React elements nobody will scroll to.
+    if (rendered.length >= 4000) break;
     const line = raw.replace(/\t/g, '  ');
 
     if (line.trim().startsWith('```')) {
@@ -88,9 +92,29 @@ export function Markdown({ text, width, lines }: { text: string; width: number; 
     }
   }
 
+  return rendered;
+}
+
+/** A window onto those rows. */
+export function Markdown({
+  rows,
+  offset,
+  lines,
+}: {
+  rows: ReactNode[];
+  offset: number;
+  lines: number;
+}) {
   return (
     <Box flexDirection="column" flexGrow={1} overflow="hidden">
-      {rendered}
+      {rows.slice(offset, offset + lines).map((node, i) => (
+        // Keyed by where the row sits in the whole file, and unshrinkable:
+        // left to shrink, a block taller than the panel has rows squeezed out
+        // of its middle rather than its tail cut off.
+        <Box key={offset + i} flexShrink={0}>
+          {node}
+        </Box>
+      ))}
     </Box>
   );
 }

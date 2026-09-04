@@ -118,6 +118,13 @@ necessarily one you laid out. **`paths`** narrows the scan to part of a source.
 
 ### Added
 
+- **The preview scrolls.** `⇧↑` and `⇧↓` move it a line, the wheel three, and
+  it says where in the file it is. Shift is the modifier that means "the other
+  pane", so plain arrows keep moving the list. Moving to another artifact
+  starts at the top of its file rather than partway down where the last one was
+  left. The description scrolls with the file — fixed above it, a long one took
+  the whole panel and left the file nowhere to be.
+
 - **`include`, a third filter, matched after `exclude`.** Keeping one skill out
   of an excluded collection of two hundred used to mean giving up the pattern
   that excludes the other hundred and ninety-nine — `exclude` had the last word

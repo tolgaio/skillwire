@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Box, renderToString } from 'ink';
-import { Markdown } from './Markdown.js';
+import { markdownRows, Markdown } from './Markdown.js';
 
-const render = async (text: string, lines = 30, width = 40): Promise<string> =>
+const render = async (text: string, lines = 30, width = 40, offset = 0): Promise<string> =>
   renderToString(
     <Box width={width + 4} flexDirection="column" height={lines + 2}>
-      <Markdown text={text} width={width} lines={lines} />
+      <Markdown rows={markdownRows(text, width)} offset={offset} lines={lines} />
     </Box>,
     { columns: width + 4 },
   );
@@ -54,10 +54,22 @@ test('a long line is cut, not wrapped', async () => {
   for (const line of out.split('\n')) assert.ok(line.length <= 34, JSON.stringify(line));
 });
 
-test('the budget is a limit, not a suggestion', async () => {
+test('the window is a limit, not a suggestion', async () => {
   const out = await render(Array.from({ length: 100 }, (_, i) => `line ${i}`).join('\n'), 6);
   assert.match(out, /line 0/);
   assert.doesNotMatch(out, /line 50/);
+});
+
+test('the window can be moved down the file', async () => {
+  const text = Array.from({ length: 100 }, (_, i) => `line ${i}`).join('\n');
+  const out = await render(text, 6, 40, 40);
+  assert.match(out, /line 40/);
+  assert.doesNotMatch(out, /line 0\b/);
+});
+
+test('every row of the file is reachable', async () => {
+  const rows = markdownRows(Array.from({ length: 50 }, (_, i) => `line ${i}`).join('\n'), 40);
+  assert.equal(rows.length, 50, 'rows are built in full, so a caller can scroll them');
 });
 
 test('a long line is wrapped, not cut off', async () => {

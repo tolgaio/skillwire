@@ -1089,3 +1089,132 @@ test('the position is in the strip, not a row that comes and goes', async () => 
     await rm(many, { recursive: true, force: true });
   }
 });
+
+// --- scrolling the preview -------------------------------------------------
+
+const SHIFT = { up: `${ESC}[1;2A`, down: `${ESC}[1;2B` };
+
+/** A source whose file is longer than any panel. */
+async function longFile() {
+  const root = await mkdtemp(join(tmpdir(), 'skillwire-ink-'));
+  const src = join(root, 'src');
+  for (const id of ['alpha', 'beta']) {
+    await mkdir(join(src, 'skills', id), { recursive: true });
+    const body = Array.from({ length: 80 }, (_, i) => `${id} line ${i}`).join('\n\n');
+    await writeFile(
+      join(src, 'skills', id, 'SKILL.md'),
+      `---\nname: ${id}\ndescription: about ${id}\n---\n\n${body}\n`,
+    );
+  }
+  const path = join(root, 'c.json');
+  const config: Config = {
+    wires: [{ name: 'mine', source: { path: src }, targets: ['claude'] }],
+  };
+  await writeFile(path, JSON.stringify(config));
+  const app = render(
+    <MouseProvider>
+      <StoreProvider initialConfig={config} configPath={path} noFetch>
+        <App />
+      </StoreProvider>
+    </MouseProvider>,
+  );
+  await tick(200);
+  return {
+    root,
+    screen: (): string => app.lastFrame() ?? '',
+    press: async (...keys: string[]) => {
+      for (const k of keys) {
+        app.stdin.write(k);
+        await tick(30);
+      }
+    },
+    done: () => app.unmount(),
+  };
+}
+
+/** Where the preview panel says it is: [first, last, total]. */
+function previewAt(screen: string): [number, number, number] {
+  const m = /(\d+)–(\d+) of (\d+)/.exec(screen);
+  assert.ok(m, `no preview position:\n${screen}`);
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+test('shift and an arrow scroll the preview, not the list', async () => {
+  const f = await longFile();
+  try {
+    await f.press(KEY.enter);
+    const listRow = (): number => f.screen().split('\n').findIndex((l) => l.includes('about beta'));
+    const before = listRow();
+    assert.equal(previewAt(f.screen())[0], 1, 'the file starts at the top');
+
+    await f.press(SHIFT.down, SHIFT.down, SHIFT.down);
+    assert.equal(previewAt(f.screen())[0], 4, 'three rows down');
+    assert.equal(listRow(), before, 'and the list did not move');
+
+    await f.press(SHIFT.up, SHIFT.up, SHIFT.up);
+    assert.equal(previewAt(f.screen())[0], 1, 'and back again');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('the preview stops at the end of the file rather than scrolling past it', async () => {
+  const f = await longFile();
+  try {
+    await f.press(KEY.enter);
+    const [, , total] = previewAt(f.screen());
+    for (let i = 0; i < total + 20; i++) await f.press(SHIFT.down);
+    const [, last, end] = previewAt(f.screen());
+    assert.equal(last, end, `ran past the end: ${previewAt(f.screen()).join('–')}`);
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('a different artifact starts at the top of its own file', async () => {
+  // Left where the last one was, a preview opens partway down a file nobody
+  // has read a word of.
+  const f = await longFile();
+  try {
+    await f.press(KEY.enter);
+    await f.press(SHIFT.down, SHIFT.down, SHIFT.down, SHIFT.down);
+    assert.equal(previewAt(f.screen())[0], 5);
+    await f.press('j');
+    assert.match(f.screen(), /beta line 0/, 'now showing the other file');
+    assert.equal(previewAt(f.screen())[0], 1, 'from its top');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('the wheel over the preview scrolls it', async () => {
+  const f = await longFile();
+  try {
+    await f.press(KEY.enter);
+    const lines = f.screen().split('\n');
+    const row = lines.findIndex((l) => l.includes('alpha line 1'));
+    const column = lines[row]!.indexOf('alpha line 1') + 1;
+    await f.press(`${ESC}[<65;${column};${row + 1}M`); // wheel down, over the panel
+    assert.equal(previewAt(f.screen())[0], 4, 'three rows, as a wheel notch should');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('the wheel over the list moves the list, not the preview', async () => {
+  const f = await longFile();
+  try {
+    await f.press(KEY.enter);
+    const lines = f.screen().split('\n');
+    const row = lines.findIndex((l) => marked('alpha').test(l));
+    await f.press(`${ESC}[<65;4;${row + 1}M`);
+    assert.match(f.screen(), /beta line 0/, 'the cursor moved down the list');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
