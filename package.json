@@ -1,7 +1,7 @@
 {
   "name": "skillwire",
   "version": "0.0.2",
-  "description": "Push Agent Skills from one source of truth into every agent that can use them — including ones that aren't filesystems.",
+  "description": "Push Agent Skills from one source of truth into every agent that can use them \u2014 including ones that aren't filesystems.",
   "keywords": [
     "agent-skills",
     "claude-code",
@@ -27,7 +27,8 @@
     "prepublishOnly": "npm run build",
     "test:watch": "node --test --watch dist/*.test.js dist/targets/*.test.js dist/ui/*.test.js dist/ui/components/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "postbuild": "node -e \"require('fs').chmodSync('dist/cli.js', 0o755)\""
+    "postbuild": "node -e \"require('fs').chmodSync('dist/cli.js', 0o755)\"",
+    "release-notes": "node scripts/release-notes.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

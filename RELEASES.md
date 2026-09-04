@@ -14,6 +14,20 @@ Three things count as breaking, all of them user-visible:
   artifacts, which `--prune` then removes
 - a change to where a **target writes**
 
+## Publishing
+
+RELEASES.md is wrapped to eighty columns, which is right for a file read in an
+editor and wrong for a GitHub release body: those render with GFM's
+soft-break-as-hard-break rule, so every wrap becomes a line break and the notes
+stop dead at eighty characters however wide the page is.
+
+```bash
+npm run release-notes 0.0.2 > notes.md && gh release create v0.0.2 -F notes.md
+```
+
+That pulls the section out and unwraps the paragraphs, leaving headings, lists,
+tables and fenced code alone.
+
 ---
 
 ## 0.0.2 — 2026-09-03
