@@ -25,7 +25,7 @@ export const BROWSE_KEYS: [string, string][] = [
   ['v', 'invert what is listed'],
   ['tab  1 2 3', 'skills, commands, agents'],
   ['p', 'the preview panel, on or off'],
-  ['⇧ ↑ ↓', 'scroll the preview — the wheel does too'],
+  ['[  ]', 'scroll the preview — the wheel does too'],
   ['s', 'show all / selected / unselected'],
   ['/', 'search names and descriptions'],
   ['f', 'edit the filter patterns'],
@@ -40,6 +40,7 @@ export const BROWSE_HINTS: [string, string][] = [
   ['a/n', 'all/none'],
   ['s', 'showing'],
   ['p', 'preview'],
+  ['[ ]', 'scroll it'],
   ['/', 'search'],
   ['f', 'filters'],
   ['i', 'install'],
@@ -192,8 +193,13 @@ export function Browse({
         return store.pop();
       }
 
-      // Shift is the modifier that means "the other pane": plain arrows move
-      // the list, shifted ones move what the list is showing you.
+      // Brackets rather than shift and an arrow. Whether a terminal reports
+      // shift with an arrow at all is up to the terminal — plenty send the
+      // bare sequence, and then the keystroke meant for the preview moves the
+      // list instead. Shift is still honoured where it does arrive.
+      if (input === '[' || input === ']') {
+        return setScroll((s) => Math.max(0, s + (input === '[' ? -1 : 1)));
+      }
       if (key.shift && (key.upArrow || key.downArrow)) {
         return setScroll((s) => Math.max(0, s + (key.upArrow ? -1 : 1)));
       }

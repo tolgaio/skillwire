@@ -118,9 +118,11 @@ necessarily one you laid out. **`paths`** narrows the scan to part of a source.
 
 ### Added
 
-- **The preview scrolls.** `⇧↑` and `⇧↓` move it a line, the wheel three, and
-  it says where in the file it is. Shift is the modifier that means "the other
-  pane", so plain arrows keep moving the list. Moving to another artifact
+- **The preview scrolls.** `[` and `]` move it a line, the wheel three, and it
+  says where in the file it is. Brackets rather than shifted arrows: whether a
+  terminal reports shift with an arrow is up to the terminal, and where it does
+  not, the keystroke meant for the preview moves the list instead. Shift and an
+  arrow work too, where they arrive. Moving to another artifact
   starts at the top of its file rather than partway down where the last one was
   left. The description scrolls with the file — fixed above it, a long one took
   the whole panel and left the file nowhere to be.

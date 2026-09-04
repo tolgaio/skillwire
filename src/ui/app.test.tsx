@@ -1092,7 +1092,10 @@ test('the position is in the strip, not a row that comes and goes', async () => 
 
 // --- scrolling the preview -------------------------------------------------
 
+// A terminal that does report shift with an arrow. Plenty do not, which is
+// why the brackets exist.
 const SHIFT = { up: `${ESC}[1;2A`, down: `${ESC}[1;2B` };
+const SCROLL = { up: '[', down: ']' };
 
 /** A source whose file is longer than any panel. */
 async function longFile() {
@@ -1213,6 +1216,41 @@ test('the wheel over the list moves the list, not the preview', async () => {
     const row = lines.findIndex((l) => marked('alpha').test(l));
     await f.press(`${ESC}[<65;4;${row + 1}M`);
     assert.match(f.screen(), /beta line 0/, 'the cursor moved down the list');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('brackets scroll the preview, on any terminal', async () => {
+  // Whether shift arrives with an arrow is the terminal's business: plenty
+  // send the bare sequence, and then a keystroke meant for the preview moves
+  // the list instead.
+  const f = await longFile();
+  try {
+    await f.press(KEY.enter);
+    const listRow = (): number => f.screen().split('\n').findIndex((l) => l.includes('about beta'));
+    const before = listRow();
+
+    await f.press(SCROLL.down, SCROLL.down, SCROLL.down);
+    assert.equal(previewAt(f.screen())[0], 4);
+    assert.equal(listRow(), before, 'the list stayed put');
+
+    await f.press(SCROLL.up, SCROLL.up);
+    assert.equal(previewAt(f.screen())[0], 2);
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('a plain arrow still moves the list, whatever the terminal sends', async () => {
+  const f = await longFile();
+  try {
+    await f.press(KEY.enter);
+    assert.match(f.screen(), /alpha line 0/);
+    await f.press(KEY.down);
+    assert.match(f.screen(), /beta line 0/, 'the cursor moved and the preview followed');
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
