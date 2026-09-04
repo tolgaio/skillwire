@@ -60,3 +60,48 @@ test('a list longer than the window is cut to it, and says so', async () => {
   assert.ok(!lines.some((l) => l.includes('item-30')), 'the window has to bound it');
   assert.ok(lines.some((l) => /of 40/.test(l)));
 });
+
+test('the two markers are the same width, so columns cannot drift', async () => {
+  // The reason these are not emoji: a tick and a white square are two cells
+  // wide, terminals disagree about whether they really are, and a marker whose
+  // width is a matter of opinion pulls every column after it out of line.
+  const { default: stringWidth } = await import('string-width');
+  const { MARKS } = await import('./List.js');
+  assert.equal(stringWidth(MARKS.on), stringWidth(MARKS.off), JSON.stringify(MARKS));
+  assert.equal(stringWidth(MARKS.on), MARKS.on.length, 'and one cell per character');
+});
+
+test('a picked row and an unpicked one line up', async () => {
+  const { Box, Text, renderToString } = await import('ink');
+  const { Cell, Check, List, Rest, MARKS } = await import('./List.js');
+  const { MouseProvider } = await import('../mouse.js');
+
+  const out = await renderToString(
+    <MouseProvider enabled={false}>
+      <Box flexDirection="column" width={40}>
+        <List
+          items={[true, false]}
+          cursor={0}
+          height={4}
+          render={(on, here) => (
+            <>
+              <Cell width={MARKS.on.length + 1}>
+                <Check on={on} here={here} />
+              </Cell>
+              <Rest>
+                <Text>name</Text>
+              </Rest>
+            </>
+          )}
+        />
+      </Box>
+    </MouseProvider>,
+    { columns: 40 },
+  );
+  const columns = out
+    .split('\n')
+    .filter((l) => l.includes('name'))
+    .map((l) => l.indexOf('name'));
+  assert.equal(columns.length, 2);
+  assert.equal(columns[0], columns[1], `the name column moved:\n${out}`);
+});

@@ -7,6 +7,7 @@ import { render } from 'ink-testing-library';
 import type { Config, Wire } from '../config.js';
 import type { RunOptions } from '../run.js';
 import { App } from './App.js';
+import { MARKS } from './components/List.js';
 import { MouseProvider } from './mouse.js';
 import { StoreProvider } from './store.js';
 
@@ -149,7 +150,7 @@ test('browsing lists artifacts with their descriptions', async () => {
     const s = f.screen();
     assert.match(s, /alpha/);
     assert.match(s, /The first skill/, 'the description is what makes the list useful');
-    assert.match(s, /\[x\]/, 'everything starts ticked');
+    assert.match(s, new RegExp(MARKS.on), 'everything starts ticked');
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
@@ -235,12 +236,12 @@ test('s narrows the list to what is selected, then to what is not', async () => 
     await f.press('s');
     await f.expect(/showing selected/);
     assert.match(f.screen(), /beta/);
-    assert.doesNotMatch(f.screen(), /\[x\] alpha/);
+    assert.doesNotMatch(f.screen(), new RegExp(`${MARKS.on} alpha`));
 
     await f.press('s');
     await f.expect(/showing unselected/);
     assert.match(f.screen(), /alpha/);
-    assert.doesNotMatch(f.screen(), /\[x\] gamma/);
+    assert.doesNotMatch(f.screen(), new RegExp(`${MARKS.on} gamma`));
 
     await f.press('s');
     assert.doesNotMatch(f.screen(), /showing (selected|unselected)/);
@@ -504,14 +505,14 @@ function rowOf(screen: string, needle: string | RegExp): number {
 }
 
 /**
- * The row a given artifact's checkbox is on.
+ * The row a given artifact's marker is on.
  *
- * By the checkbox, not the description: the side panel prints the description
- * of the row under the cursor, on the same screen lines as the list beside it,
- * so searching for the text finds whichever line the panel happened to put it.
+ * By the marker, not the description: the side panel prints the description of
+ * the row under the cursor, on the same screen lines as the list beside it, so
+ * searching for the text finds whichever line the panel happened to put it.
  */
-const rowFor = (screen: string, id: string): number =>
-  rowOf(screen, new RegExp(`\\[[ x]\\] ${id}`));
+const marked = (id: string): RegExp => new RegExp(`[${MARKS.on}${MARKS.off}] ${id}`);
+const rowFor = (screen: string, id: string): number => rowOf(screen, marked(id));
 
 test('clicking a skill ticks it', async () => {
   const f = await fixture();

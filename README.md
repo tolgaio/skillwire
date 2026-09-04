@@ -101,15 +101,16 @@ config file. Add sources, see what each one holds, tick what you want, install.
 ╰────────────────────────────────────────────────────────────────────────────╯
 ╭──────────────────────────────────────────╮╭────────────────────────────────╮
 │ mine 268 of 500 selected                 ││ pdf-export                     │
-│  prefix p   exclude skill:vendored-*     ││ kind    skill                  │
-│   skills  27/259                         ││ files   4                      │
-│ ▸ [x] pdf-export       Turn a document…  ││                                │
-│   [x] tone-check       Flag hedging an…  ││ Turn a document into a tagged, │
-│   [ ] vendored-import  (no description)  ││ accessible PDF, with the       │
-│   1–18 of 500                            ││ heading structure and alt text │
+│ 1 skills 27/259  2 commands 11/238       ││ kind    skill                  │
+│                                          ││ files   4                      │
+│  prefix p   exclude skill:vendored-*     ││                                │
+│ ▸ ● pdf-export        Turn a document…   ││ Turn a document into a tagged, │
+│   ● tone-check        Flag hedging an…   ││ accessible PDF, with the       │
+│   ▸ vendored/         0/232 selected     ││ heading structure and alt text │
+│   1–18 of 259                            ││ a screen reader needs.         │
 ╰──────────────────────────────────────────╯╰────────────────────────────────╯
  ✓ saved
- space tick  a all  n none  s showing  / search  f filters  i install  ? keys
+ tab kind  space tick  a all  n none  s showing  / search  f filters  ? keys
 ```
 
 A breadcrumb says where you are, a side panel carries the full description of
@@ -123,7 +124,9 @@ the list.
 Arrows and vim keys both work everywhere: `j`/`k` move, `h` goes back, `l` goes
 in, `g`/`G` jump to the ends, `^u`/`^d` page. The row under the cursor is a grey
 bar across the panel — in a list of five hundred near-identical names, a marker
-at the start of the line is not enough to find yourself by.
+at the start of the line is not enough to find yourself by. A picked row is a
+filled circle, `●`, against a hollow `○` for the rest; `SKILLWIRE_ASCII` falls
+back to `[x]`/`[ ]` for a terminal that cannot draw them.
 
 The bar recolours nothing on the row, so a green tick stays a green tick. Grey
 is a guess about your terminal, though; set `SKILLWIRE_HIGHLIGHT` to any colour

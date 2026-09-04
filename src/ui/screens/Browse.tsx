@@ -10,7 +10,7 @@ import {
   setSelection,
   toggle,
 } from '../../selection.js';
-import { Cell, Check, List, Rest, rowColour } from '../components/List.js';
+import { Cell, Check, List, MARKS, Rest, rowColour } from '../components/List.js';
 import { Tabs, tabFor, type Tab } from '../components/Tabs.js';
 import { Panel, Row } from '../components/chrome.js';
 import { moveCursor, nav } from '../keys.js';
@@ -331,7 +331,7 @@ export function Browse({
                 <Text dimColor>{e.header}</Text>
               ) : 'folder' in e ? (
                 <>
-                  <Cell width={4}>
+                  <Cell width={MARKS.on.length + 1}>
                     <Text {...rowColour(here, true)}>{e.open ? '▾' : '▸'}</Text>
                   </Cell>
                   <Cell width={idWidth + 2}>
@@ -347,7 +347,7 @@ export function Browse({
                 </>
               ) : (
                 <>
-                  <Cell width={4}>
+                  <Cell width={MARKS.on.length + 1}>
                     <Check on={isSelected(e.artifact, wire)} here={here} />
                   </Cell>
                   <Cell width={idWidth + 2}>

@@ -134,10 +134,27 @@ function Row({
   );
 }
 
-/** A checkbox, coloured by state rather than only shaped by it. */
+/**
+ * Whether a row is picked.
+ *
+ * A filled circle against a hollow one, because scanning three hundred rows
+ * for what is on is a job for contrast rather than for reading glyphs: fill is
+ * caught at a glance where `[x]` against `[ ]` has to be looked at.
+ *
+ * Not emoji. A tick and a white square are two cells wide, terminals disagree
+ * about whether they really are, and a marker whose width is a matter of
+ * opinion pulls every column after it out of line. These two are one cell
+ * each, in any font that can draw a box.
+ *
+ * `SKILLWIRE_ASCII` falls back to brackets for a terminal that cannot.
+ */
+export const MARKS = process.env.SKILLWIRE_ASCII
+  ? { on: '[x]', off: '[ ]' }
+  : { on: '●', off: '○' };
+
 export function Check({ on, here = false }: { on: boolean; here?: boolean }): ReactNode {
-  if (on) return <Text color="green">[x]</Text>;
-  return <Text {...rowColour(here, true)}>[ ]</Text>;
+  if (on) return <Text color="green">{MARKS.on}</Text>;
+  return <Text {...rowColour(here, true)}>{MARKS.off}</Text>;
 }
 
 /** Fixed-width cell, so columns line up whatever is in them. */

@@ -54,7 +54,7 @@ test('the scanner finds dim text on a bar', () => {
 
 test('nothing on the highlighted row is dim, and the tick keeps its colour', async () => {
   const { Box, Text, renderToString } = await import('ink');
-  const { Check, Cell, List, Rest, rowColour } = await import('./List.js');
+  const { Check, Cell, List, MARKS, Rest, rowColour } = await import('./List.js');
   const { MouseProvider } = await import('../mouse.js');
 
   const out = await renderToString(
@@ -89,7 +89,11 @@ test('nothing on the highlighted row is dim, and the tick keeps its colour', asy
   assert.ok(bar, `no highlighted row in:\n${out}`);
   assert.match(bar, /\[100m/, 'the bar is drawn in grey');
   assert.equal(dimOnBar(bar), '', `this goes invisible against the bar: ${bar}`);
-  assert.match(bar, /\[32m\[x\]/, 'the tick is still green, not repainted to fit the bar');
+  assert.match(
+    bar,
+    new RegExp(`\\[32m${MARKS.on}`),
+    'the marker is still green, not repainted to fit the bar',
+  );
 });
 
 test('the bar colour can be overridden for a terminal this guess does not suit', async () => {

@@ -40,6 +40,13 @@ tables and fenced code alone.
 
 ### Added
 
+- **A filled circle marks a picked row**, against a hollow one for the rest.
+  Scanning three hundred rows for what is on is a job for contrast, and fill is
+  caught at a glance where `[x]` against `[ ]` has to be read. Not emoji: those
+  are two cells wide, terminals disagree about whether they really are, and a
+  marker whose width is a matter of opinion pulls every column after it out of
+  line. `SKILLWIRE_ASCII` falls back to brackets.
+
 - **Skills, commands and agents are tabs in the interactive picker**, each
   counted, one listed at a time. They are three different things that happen to
   share a repo, and interleaved, "how many commands does this hold" meant
