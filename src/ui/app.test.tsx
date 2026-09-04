@@ -266,12 +266,44 @@ test('bulk keys act on what the list is showing, not the whole source', async ()
   }
 });
 
-test('the picker refuses to leave a source with nothing selected', async () => {
+test('a source can be emptied, and says what that means', async () => {
+  // Turning a source off without deleting it is a reasonable thing to want.
+  // It used to be refused, because `only: []` reads as "no filter" rather than
+  // "nothing" — so there was no way to say it.
   const f = await fixture({ only: ['skill:alpha'] });
   try {
     await f.press(KEY.enter, ' ');
-    await f.expect(/installs nothing/);
-    assert.deepEqual((await f.saved()).wires[0]!.only, ['skill:alpha'], 'unchanged');
+    const saved = await f.saved((c) => !!c.wires[0]!.exclude);
+    assert.deepEqual(saved.wires[0]!.exclude, ['*'], 'said outright');
+    await f.expect(/nothing selected/, 'and the strip says so');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('unticking every artifact leaves a source that installs nothing', async () => {
+  const f = await fixture();
+  try {
+    await f.press(KEY.enter, 'n');
+    const saved = await f.saved((c) => !!c.wires[0]!.exclude);
+    assert.deepEqual(saved.wires[0]!.exclude, ['*']);
+    assert.match(f.screen(), /0 of 3 selected/);
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('and it can be filled again', async () => {
+  const f = await fixture();
+  try {
+    await f.press(KEY.enter, 'n');
+    await f.saved((c) => !!c.wires[0]!.exclude);
+    await f.press('a');
+    const saved = await f.saved((c) => !c.wires[0]!.exclude);
+    assert.equal(saved.wires[0]!.exclude, undefined);
+    assert.match(f.screen(), /3 of 3 selected/);
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });

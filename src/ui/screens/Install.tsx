@@ -1,5 +1,5 @@
 import { Spinner, StatusMessage } from '@inkjs/ui';
-import { Box, Static, Text} from 'ink';
+import { Box, Text } from 'ink';
 import { useKeys } from '../useKeys.js';
 import type { ReactNode } from 'react';
 import { Panel } from '../components/chrome.js';
@@ -13,8 +13,7 @@ export const INSTALL_HINTS: [string, string][] = [['⏎', 'back']];
  *
  * Ink renders in place rather than on an alternate screen, so there is nothing
  * to suspend and drop out of: the same output `skillwire install` prints
- * streams into a panel here, and `<Static>` keeps already-printed lines out of
- * the re-render on every new one.
+ * streams into a panel here.
  */
 export function Install({
   dryRun,
@@ -43,7 +42,6 @@ export function Install({
         colour={dryRun ? 'yellow' : 'green'}
         grow
       >
-        <Static items={store.log.length > shown.length ? [] : []}>{() => null}</Static>
         {shown.map((line, i) => (
           <Text key={`${i}-${line}`}>{line}</Text>
         ))}

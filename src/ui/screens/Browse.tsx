@@ -286,18 +286,12 @@ export function Browse({
     // excludes adds it to `include`, which is matched after `exclude` — one
     // artifact named without touching the pattern covering the rest. The strip
     // says an include exists, which outlasts any note this could print.
-    if (on && selected === 1) {
-      return store.say('a source with nothing selected installs nothing', 'warn');
-    }
+
     void store.replaceWire(index, compact(toggle(wire, current, !on), artifacts));
   }
 
   function bulk(on: boolean): void {
-    const next = setSelection(wire, artifacts, matching, on);
-    if (!on && !artifacts.filter((a) => isSelected(a, next)).length) {
-      return store.say('a source with nothing selected installs nothing', 'warn');
-    }
-    void store.replaceWire(index, next);
+    void store.replaceWire(index, setSelection(wire, artifacts, matching, on));
   }
 
   // The side panel carries the full description, so the list can give more of
@@ -441,6 +435,10 @@ export function Browse({
                 {window.first}–{window.last} of {window.total}
               </Chip>
             ) : null}
+            {/* First, and short. Consequential enough to be on screen rather
+                than in a note the next save overwrites — and the strip clips
+                what does not fit, so the warning cannot be the thing cut. */}
+            {selected === 0 ? <Chip>nothing selected</Chip> : null}
             {showing !== 'all' ? <Chip>showing {showing}</Chip> : null}
             {wire.prefix ? <Chip>prefix {wire.prefix}</Chip> : null}
             {wire.exclude?.length ? <Chip>exclude {summarise(wire.exclude)}</Chip> : null}

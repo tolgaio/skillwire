@@ -28,6 +28,23 @@ npm run release-notes 0.0.2 > notes.md && gh release create v0.0.2 -F notes.md
 That pulls the section out and unwraps the paragraphs, leaving headings, lists,
 tables and fenced code alone.
 
+## Unreleased
+
+### Fixed
+
+- **A source could not be emptied.** Unticking the last artifact was refused,
+  because `only: []` reads as "no filter" rather than "nothing" — so turning a
+  source off without deleting it was not expressible. It writes
+  `exclude: ["*"]` now, the strip says `nothing selected`, and the next install
+  prunes what the source had. Ticking anything back removes the marker again;
+  a glob you wrote is still never rewritten away.
+
+- **The terminal is restored whatever happens.** An error, or a signal, could
+  leave mouse tracking on and the terminal in raw mode — sending escape
+  sequences to whatever ran next, in a shell that would not take input.
+
+---
+
 ## 0.0.3 — 2026-09-04
 
 Mostly the interactive picker, which now looks and behaves like something you

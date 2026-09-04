@@ -19,6 +19,9 @@ import { matchesArtifact, selectArtifacts } from './filter.js';
 
 const exact = (p: string) => !p.includes('*');
 
+/** The pattern that says "none of it". */
+const EMPTY = '*';
+
 /** The literal forms that name exactly this artifact and nothing else. */
 function literals(a: Artifact): string[] {
   return [`${a.kind}:${a.id}`, a.id];
@@ -119,27 +122,45 @@ export function toggle(wire: Wire, a: Artifact, on: boolean): Wire {
  * a pattern someone wrote is worth more than a shorter file.
  */
 export function compact(wire: Wire, all: Artifact[]): Wire {
-  // An include only exists to override a pattern, so a wire that has one is
-  // not a wire whose filters can be rewritten as a plain list.
-  if (wire.include?.length) return wire;
-  const patterns = [...(wire.only ?? []), ...(wire.exclude ?? [])];
-  if (patterns.some((p) => !exact(p))) return wire;
+  const selected = selectArtifacts(all, wire).length;
 
-  const selected = selectArtifacts(all, wire);
-  // Nothing selected cannot be said with `only` alone — an empty list reads as
-  // "no filter". Leave whatever expressed it in place.
-  if (!selected.length || selected.length === all.length) {
-    return selected.length === all.length ? withFilters(wire, [], []) : wire;
+  // Nothing selected is an end state worth saying outright: `only: []` reads
+  // as "no filter", so without a pattern for it there was no way to express an
+  // empty source and the picker had to refuse to make one.
+  if (all.length && !selected) return withFilters({ ...wire }, [], [EMPTY], []);
+
+  // Everything selected is no filters at all — but only when there is no glob
+  // to lose. Ticking one artifact back should not wipe a pattern that governs
+  // two hundred others. The empty marker is this module's own, so it goes.
+  // The empty marker is this module's own, so it is not a pattern to protect.
+  const globs = [...(wire.only ?? []), ...(wire.exclude ?? [])].filter(
+    (p) => !exact(p) && p !== EMPTY,
+  );
+  if (all.length && selected === all.length && !globs.length) {
+    return withFilters({ ...wire }, [], [], []);
   }
 
+  // A glob someone wrote is worth more than a shorter file, and an include
+  // only exists to override one — so neither is rewritten away.
+  if (globs.length) return wire;
+  if (wire.include?.length && !wire.exclude?.includes(EMPTY)) return wire;
+
   const ids = (list: Artifact[]) => list.map((a) => `${a.kind}:${a.id}`).sort();
-  const unselected = all.filter((a) => !isSelected(a, wire));
-  return selected.length <= unselected.length
-    ? withFilters(wire, ids(selected), [])
-    : withFilters(wire, [], ids(unselected));
+  const kept = selectArtifacts(all, wire);
+  const dropped = all.filter((a) => !isSelected(a, wire));
+  return kept.length <= dropped.length
+    ? withFilters(wire, ids(kept), [], [])
+    : withFilters(wire, [], ids(dropped), []);
 }
 
-/** Tick or untick a whole set, then tidy up. */
+/**
+ * Tick or untick a whole set, then tidy up.
+ *
+ * Emptying a source entirely is a thing people do — turning one off without
+ * deleting it — and it used to be refused because `only: []` reads as "no
+ * filter" rather than "nothing". `exclude: ["*"]` says it outright, in the
+ * language that is already there, and `include` can still name exceptions.
+ */
 export function setSelection(wire: Wire, all: Artifact[], subset: Artifact[], on: boolean): Wire {
   let out = wire;
   for (const a of subset) {

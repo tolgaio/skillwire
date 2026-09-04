@@ -176,3 +176,47 @@ test('a pattern matching nothing is reported as zero, not hidden', () => {
   const counts = patternCounts(wire({ only: ['gone-*'] }), [a('one')]);
   assert.equal(counts.get('gone-*'), 0);
 });
+
+test('emptying a source says so outright', () => {
+  // `only: []` reads as "no filter", so there was no way to express "nothing"
+  // and the picker refused. `*` is a pattern the language already has.
+  const all = [a('one'), a('two')];
+  const empty = setSelection(wire(), all, all, false);
+  assert.deepEqual(empty.exclude, ['*']);
+  assert.deepEqual(ids(all, empty), []);
+});
+
+test('an emptied source fills up again', () => {
+  const all = [a('one'), a('two')];
+  const empty = setSelection(wire(), all, all, false);
+  const full = setSelection(empty, all, all, true);
+  assert.deepEqual(ids(all, full), ['one', 'two']);
+  assert.equal(full.exclude, undefined, 'and leaves no pattern behind');
+});
+
+test('emptying drops the filters it makes redundant', () => {
+  const all = [a('one'), a('two')];
+  const empty = setSelection(wire({ only: ['skill:one'], include: ['skill:two'] }), all, all, false);
+  assert.equal(empty.only, undefined);
+  assert.equal(empty.include, undefined);
+  assert.deepEqual(empty.exclude, ['*']);
+});
+
+test('emptying a source does not take a deliberate pattern with it when refilled', () => {
+  // Ticking one artifact back must not wipe a glob governing two hundred
+  // others — that is the whole reason compact leaves globs alone.
+  const all = [a('vendored-one'), a('vendored-two'), a('mine')];
+  const w = wire({ exclude: ['skill:vendored-*'] });
+  const ticked = toggle(w, all[0]!, true);
+  const after = compact(ticked, all);
+  assert.deepEqual(after.exclude, ['skill:vendored-*'], 'the pattern survives');
+  assert.deepEqual(ids(all, after), ['vendored-one', 'mine']);
+});
+
+test('the empty marker is removed once something is selected again', () => {
+  const all = [a('one'), a('two')];
+  const empty = setSelection(wire(), all, all, false);
+  const one = compact(toggle(empty, all[0]!, true), all);
+  assert.deepEqual(ids(all, one), ['one'], 'and only that one comes back');
+  assert.ok(!(one.exclude ?? []).includes('*'), JSON.stringify(one));
+});
