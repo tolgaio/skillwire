@@ -31,10 +31,18 @@ export function Help({
   width: number;
 }): ReactNode {
   const all = [...keys, ...GLOBAL_KEYS];
-  const twoUp = width > 96 && all.length > 8;
+  const keyWidth = Math.max(...all.map(([k]) => k.length)) + 2;
+
+  // Size the card from what is in it. A fixed width clipped the longest
+  // binding the moment one was added, and a key list that hides the key it is
+  // describing is worse than no key list.
+  const column = keyWidth + Math.max(...all.map(([, label]) => label.length)) + 2;
+  const CHROME = 6; // two border columns and two of padding each side
+  const room = width - 4;
+  const twoUp = all.length > 8 && column * 2 + CHROME <= room;
   const half = Math.ceil(all.length / 2);
   const columns = twoUp ? [all.slice(0, half), all.slice(half)] : [all];
-  const keyWidth = Math.max(...all.map(([k]) => k.length)) + 2;
+  const boxWidth = Math.min(room, column * columns.length + CHROME);
 
   return (
     <Box flexGrow={1} justifyContent="center" alignItems="center">
@@ -44,7 +52,7 @@ export function Help({
         borderColor="cyan"
         paddingX={2}
         paddingY={1}
-        width={Math.min(width - 8, twoUp ? 88 : 56)}
+        width={boxWidth}
       >
         <Box marginBottom={1} justifyContent="space-between">
           <Text bold color="cyan">

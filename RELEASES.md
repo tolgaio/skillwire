@@ -40,11 +40,16 @@ tables and fenced code alone.
 
 ### Added
 
-- **Collections are folders in the interactive picker**, one collapsible row
-  each, with how much of the folder is selected. A source that keeps two
-  hundred skills in one directory was two hundred rows to scroll past.
-  `space`, `⏎`, `←` and `→` open and close them, and a search opens them all,
-  since a match may be inside one.
+- **Skills, commands and agents are tabs in the interactive picker**, each
+  counted, one listed at a time. They are three different things that happen to
+  share a repo, and interleaved, "how many commands does this hold" meant
+  scrolling and counting. `tab` cycles, `1`–`3` jump, and a tab can be clicked.
+  A source holding one kind shows no tab bar.
+
+- **Collections are folders in the picker**, one collapsible row each, with how
+  much of the folder is selected. A source that keeps two hundred skills in one
+  directory was two hundred rows to scroll past. `space`, `⏎`, `←` and `→` open
+  and close them, and a search opens them all, since a match may be inside one.
 
 ---
 

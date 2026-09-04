@@ -11,15 +11,17 @@ import {
   toggle,
 } from '../../selection.js';
 import { Cell, Check, List, Rest, rowColour } from '../components/List.js';
+import { Tabs, tabFor, type Tab } from '../components/Tabs.js';
 import { Panel, Row } from '../components/chrome.js';
 import { moveCursor, nav } from '../keys.js';
 import { useStore } from '../store.js';
 
 export const BROWSE_KEYS: [string, string][] = [
-  ['space', 'tick or untick'],
+  ['space', 'tick, or open a folder'],
   ['a', 'tick everything listed'],
   ['n', 'untick everything listed'],
   ['v', 'invert what is listed'],
+  ['tab  1 2 3', 'skills, commands, agents'],
   ['s', 'show all / selected / unselected'],
   ['/', 'search names and descriptions'],
   ['f', 'edit the filter patterns'],
@@ -29,6 +31,7 @@ export const BROWSE_KEYS: [string, string][] = [
 ];
 
 export const BROWSE_HINTS: [string, string][] = [
+  ['tab', 'kind'],
   ['space', 'tick'],
   ['a', 'all'],
   ['n', 'none'],
@@ -75,8 +78,28 @@ export function Browse({
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [showing, setShowing] = useState<Showing>('all');
+  const [tab, setTab] = useState<Kind | null>(null);
   /** Folders opened by hand. A collection is a summary until asked otherwise. */
   const [opened, setOpened] = useState<Set<string>>(new Set());
+
+  /**
+   * One tab per kind the source actually holds.
+   *
+   * Skills, commands and agents are three different things that happen to live
+   * in one repo, and interleaving them made a list of five hundred where the
+   * answer to "how many commands" was to scroll and count.
+   */
+  const kinds = KINDS.filter((k) => artifacts.some((a) => a.kind === k));
+  const active = tab && kinds.includes(tab) ? tab : (kinds[0] ?? 'skill');
+  const tabs: Tab[] = kinds.map((kind) => {
+    const of = artifacts.filter((a) => a.kind === kind);
+    return {
+      key: kind,
+      label: `${kind}s`,
+      on: of.filter((a) => isSelected(a, wire)).length,
+      of: of.length,
+    };
+  });
 
   /**
    * What the list is currently showing.
@@ -85,6 +108,7 @@ export function Browse({
    * scrolling, and the question anyone actually has is "what did I pick?".
    */
   const matching = artifacts.filter((a) => {
+    if (a.kind !== active) return false;
     if (showing !== 'all') {
       const on = isSelected(a, wire);
       if (showing === 'selected' ? !on : on) return false;
@@ -97,29 +121,21 @@ export function Browse({
   // A search is a reason to see everything that matched, wherever it lives.
   const filtering = !!query.trim() || showing !== 'all';
   const entries: Entry[] = [];
-  for (const kind of KINDS) {
-    const of = matching.filter((a) => a.kind === kind);
-    if (!of.length) continue;
-    const on = of.filter((a) => isSelected(a, wire)).length;
-    entries.push({ header: `${kind}s  ${on}/${of.length}` });
-
-    const loose = of.filter((a) => !a.group);
-    const folders = new Map<string, Artifact[]>();
-    for (const a of of) {
-      if (a.group) folders.set(a.group, [...(folders.get(a.group) ?? []), a]);
-    }
-    for (const a of loose) entries.push({ artifact: a });
-    for (const [folder, held] of [...folders].sort((x, y) => x[0].localeCompare(y[0]))) {
-      const open = filtering || opened.has(`${kind}/${folder}`);
-      entries.push({
-        folder,
-        kind,
-        open,
-        on: held.filter((a) => isSelected(a, wire)).length,
-        of: held.length,
-      });
-      if (open) for (const a of held) entries.push({ artifact: a });
-    }
+  const folders = new Map<string, Artifact[]>();
+  for (const a of matching) {
+    if (!a.group) entries.push({ artifact: a });
+    else folders.set(a.group, [...(folders.get(a.group) ?? []), a]);
+  }
+  for (const [folder, held] of [...folders].sort((x, y) => x[0].localeCompare(y[0]))) {
+    const open = filtering || opened.has(`${active}/${folder}`);
+    entries.push({
+      folder,
+      kind: active,
+      open,
+      on: held.filter((a) => isSelected(a, wire)).length,
+      of: held.length,
+    });
+    if (open) for (const a of held) entries.push({ artifact: a });
   }
 
   // The list opens on a heading, so nudge past it rather than letting the
@@ -141,6 +157,13 @@ export function Browse({
           return;
         }
         return store.pop();
+      }
+
+      const moved = tabFor(input, key, tabs, active);
+      if (moved) {
+        setTab(moved as Kind);
+        setCursor(0);
+        return;
       }
 
       const where = nav(input, key);
@@ -259,28 +282,36 @@ export function Browse({
           subtitle={`${selected} of ${artifacts.length} selected`}
           grow
         >
+          <Tabs
+            tabs={tabs}
+            active={active}
+            onSelect={(k) => {
+              setTab(k as Kind);
+              setCursor(0);
+            }}
+          />
           {/* Always one line, even with nothing in it. Ticking the first
               artifact adds a filter badge, and a bar that appears only then
               would shove the whole list down a row under the pointer. */}
-          <Box flexShrink={0} height={1}>
+          <Box flexShrink={0} height={1} overflow="hidden">
             {showing !== 'all' ? (
-              <Box marginRight={1}>
+              <Box marginRight={1} flexShrink={0}>
                 <Badge color="cyan">showing {showing}</Badge>
               </Box>
             ) : null}
             {wire.prefix ? (
-              <Box marginRight={1}>
+              <Box marginRight={1} flexShrink={0}>
                 <Badge color="magenta">prefix {wire.prefix}</Badge>
               </Box>
             ) : null}
             {wire.exclude?.length ? (
-              <Box marginRight={1}>
-                <Badge color="yellow">exclude {wire.exclude.join(' ')}</Badge>
+              <Box marginRight={1} flexShrink={0}>
+                <Badge color="yellow">exclude {summarise(wire.exclude)}</Badge>
               </Box>
             ) : null}
             {wire.only?.length ? (
-              <Box marginRight={1}>
-                <Badge color="green">only {wire.only.join(' ')}</Badge>
+              <Box marginRight={1} flexShrink={0}>
+                <Badge color="green">only {summarise(wire.only)}</Badge>
               </Box>
             ) : null}
           </Box>
@@ -289,7 +320,7 @@ export function Browse({
             cursor={at}
             height={height - 3}
             label="artifact"
-            empty={emptyReason(query, showing)}
+            empty={emptyReason(query, showing, active)}
             countable={(e) => 'artifact' in e}
             onPick={pick}
             onScroll={(d) =>
@@ -378,15 +409,29 @@ function Detail({ artifact, width }: { artifact: Artifact; width: number }): Rea
   );
 }
 
+/**
+ * A pattern list, short enough for one line.
+ *
+ * Eleven of them spelled out ran past the panel and painted over the list;
+ * `f` is where the whole list lives.
+ */
+function summarise(patterns: string[]): string {
+  if (patterns.length === 1) return patterns[0]!;
+  if (patterns.length === 2) return patterns.join(' ');
+  return `${patterns.length} patterns`;
+}
+
 function facts(a: Artifact): string {
   return `${a.kind} · ${a.files.length} file${a.files.length === 1 ? '' : 's'}`;
 }
 
-function emptyReason(query: string, showing: Showing): string {
-  if (query) return 'nothing matches that search';
-  if (showing === 'selected') return 'nothing is selected';
-  if (showing === 'unselected') return 'everything is selected';
-  return 'this source has nothing';
+function emptyReason(query: string, showing: Showing, kind: Kind): string {
+  // Named, because the list is one tab now: "nothing is selected" would read
+  // as a statement about the whole source rather than about the tab you are on.
+  if (query) return `no ${kind}s match that search`;
+  if (showing === 'selected') return `no ${kind}s are selected`;
+  if (showing === 'unselected') return `every ${kind} is selected`;
+  return `this source has no ${kind}s`;
 }
 
 /**

@@ -136,7 +136,7 @@ SKILLWIRE_HIGHLIGHT=blue skillwire -i
 | where | keys |
 |---|---|
 | Sources | `a` add · `e` edit · `d` delete · `f` fetch · `r` re-read · `i` install · `D` dry run · `I` install all · `q` quit |
-| Browse | `space` tick · `a` all · `n` none · `v` invert · `s` showing · `/` search · `f` filters · `K` kinds · `i` install |
+| Browse | `tab`/`1`–`3` switch kind · `space` tick or open a folder · `a` all · `n` none · `v` invert · `s` showing · `/` search · `f` filters · `K` kinds · `i` install |
 | Filters | `o` add an `only` pattern · `x` add an `exclude` · `d` delete |
 | Form | type to edit · `⏎` next field · `←→` change · `space` toggle a target · `^s` save |
 | Anywhere | `?` keys · `m` mouse on/off · `q` quit |

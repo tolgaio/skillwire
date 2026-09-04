@@ -349,11 +349,11 @@ test('? opens a key list over the current screen, and any key closes it', async 
   try {
     await f.press(KEY.enter, '?');
     const s = f.screen();
-    assert.match(s, /tick or untick/);
+    assert.match(s, /tick, or open a folder/);
     assert.match(s, /show all \/ selected \/ unselected/);
     assert.match(s, /page up \/ down/, 'the global keys are listed too');
     await f.press(KEY.escape);
-    assert.doesNotMatch(f.screen(), /tick or untick/);
+    assert.doesNotMatch(f.screen(), /tick, or open a folder/);
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
@@ -724,6 +724,137 @@ test('a search opens the folders, since a match may be inside one', async () => 
     for (const ch of 'two') await f.press(ch);
     await f.press(KEY.enter);
     assert.match(f.screen(), /about two/, 'the match is shown wherever it lives');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+// --- tabs ------------------------------------------------------------------
+
+/** A source holding all three kinds, so the tab bar has something to do. */
+async function threeKinds() {
+  const root = await mkdtemp(join(tmpdir(), 'skillwire-ink-'));
+  const src = join(root, 'src');
+  await mkdir(join(src, 'skills', 'a-skill'), { recursive: true });
+  await writeFile(
+    join(src, 'skills', 'a-skill', 'SKILL.md'),
+    '---\nname: a-skill\ndescription: the skill\n---\nb\n',
+  );
+  await mkdir(join(src, 'commands'), { recursive: true });
+  for (const n of ['one', 'two']) {
+    await writeFile(join(src, 'commands', `cmd-${n}.md`), `---\ndescription: command ${n}\n---\nb\n`);
+  }
+  await mkdir(join(src, 'agents'), { recursive: true });
+  await writeFile(join(src, 'agents', 'an-agent.md'), '---\ndescription: the agent\n---\nb\n');
+
+  const path = join(root, 'c.json');
+  const config: Config = {
+    wires: [{ name: 'mine', source: { path: src }, targets: ['claude'] }],
+  };
+  await writeFile(path, JSON.stringify(config));
+  const app = render(
+    <MouseProvider>
+      <StoreProvider initialConfig={config} configPath={path} noFetch>
+        <App />
+      </StoreProvider>
+    </MouseProvider>,
+  );
+  await tick(160);
+  return {
+    root,
+    screen: (): string => app.lastFrame() ?? '',
+    press: async (...keys: string[]) => {
+      for (const k of keys) {
+        app.stdin.write(k);
+        await tick(30);
+      }
+    },
+    done: () => app.unmount(),
+  };
+}
+
+test('the kinds are tabs, counted, and only one is listed at a time', async () => {
+  // Skills, commands and agents are three different things that happen to
+  // share a repo. Interleaved, "how many commands" meant scrolling and
+  // counting.
+  const f = await threeKinds();
+  try {
+    await f.press(KEY.enter);
+    const s = f.screen();
+    assert.match(s, /skills 1\/1/);
+    assert.match(s, /commands 2\/2/);
+    assert.match(s, /agents 1\/1/);
+    assert.match(s, /a-skill/, 'the first tab is open');
+    assert.doesNotMatch(s, /cmd-one/, 'and the other kinds are not mixed into it');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('a digit jumps straight to a tab', async () => {
+  const f = await threeKinds();
+  try {
+    await f.press(KEY.enter, '2');
+    assert.match(f.screen(), /cmd-one/);
+    assert.doesNotMatch(f.screen(), /the skill/, 'skills are not in the commands tab');
+    await f.press('3');
+    assert.match(f.screen(), /an-agent/);
+    await f.press('1');
+    assert.match(f.screen(), /a-skill/);
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('tab cycles forward and wraps', async () => {
+  const f = await threeKinds();
+  try {
+    await f.press(KEY.enter, KEY.tab);
+    assert.match(f.screen(), /cmd-one/);
+    await f.press(KEY.tab, KEY.tab);
+    assert.match(f.screen(), /a-skill/, 'round to the start again');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('ticking in one tab is counted in its own tab', async () => {
+  const f = await threeKinds();
+  try {
+    await f.press(KEY.enter, '2', ' ');
+    assert.match(f.screen(), /commands 1\/2/, 'the commands count drops');
+    assert.match(f.screen(), /skills 1\/1/, 'and the skills count does not');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('a source with one kind shows no tab bar', async () => {
+  // Nothing to switch between, so nothing to draw.
+  const f = await fixture();
+  try {
+    await f.press(KEY.enter);
+    assert.doesNotMatch(f.screen(), /commands \d/);
+    assert.match(f.screen(), /The first skill/);
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('clicking a tab opens it', async () => {
+  const f = await threeKinds();
+  try {
+    await f.press(KEY.enter);
+    const line = f.screen().split('\n').findIndex((l) => l.includes('commands'));
+    const column = f.screen().split('\n')[line]!.indexOf('commands') + 1;
+    await f.press(clickAt(column, line + 1));
+    assert.match(f.screen(), /cmd-one/);
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
