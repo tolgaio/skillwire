@@ -632,3 +632,100 @@ test('the list does not shift under the pointer when a filter appears', async ()
     await rm(f.root, { recursive: true, force: true });
   }
 });
+
+// --- folders ---------------------------------------------------------------
+
+/** A source with a collection in it, the shape that made the list unreadable. */
+async function nested() {
+  const root = await mkdtemp(join(tmpdir(), 'skillwire-ink-'));
+  const src = join(root, 'src');
+  const put = async (path: string, name: string): Promise<void> => {
+    await mkdir(join(src, 'skills', path), { recursive: true });
+    await writeFile(
+      join(src, 'skills', path, 'SKILL.md'),
+      `---\nname: ${name}\ndescription: about ${name}\n---\nbody\n`,
+    );
+  };
+  await put('loose-one', 'loose-one');
+  for (const n of ['one', 'two', 'three']) await put(`bundle/${n}`, n);
+  const path = join(root, 'c.json');
+  const config: Config = {
+    wires: [{ name: 'mine', source: { path: src }, targets: ['claude'] }],
+  };
+  await writeFile(path, JSON.stringify(config));
+
+  const app = render(
+    <MouseProvider>
+      <StoreProvider initialConfig={config} configPath={path} noFetch>
+        <App />
+      </StoreProvider>
+    </MouseProvider>,
+  );
+  await tick(140);
+  return {
+    root,
+    screen: (): string => app.lastFrame() ?? '',
+    press: async (...keys: string[]) => {
+      for (const k of keys) {
+        app.stdin.write(k);
+        await tick(30);
+      }
+    },
+    done: () => app.unmount(),
+  };
+}
+
+test('a collection is one row until it is opened', async () => {
+  const f = await nested();
+  try {
+    await f.press(KEY.enter);
+    assert.match(f.screen(), /bundle\//, 'the folder is named');
+    assert.match(f.screen(), /0\/3 selected|3\/3 selected/, 'and says how much of it is picked');
+    assert.doesNotMatch(f.screen(), /about one/, 'its contents stay folded away');
+    assert.match(f.screen(), /loose-one/, 'artifacts outside a folder are listed as before');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('space opens a folder, and closes it again', async () => {
+  const f = await nested();
+  try {
+    await f.press(KEY.enter, 'j'); // down onto the folder row
+    await f.press(' ');
+    assert.match(f.screen(), /about one/, 'opened');
+    await f.press(' ');
+    assert.doesNotMatch(f.screen(), /about one/, 'closed');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('right opens a folder and left closes it, without leaving the screen', async () => {
+  const f = await nested();
+  try {
+    await f.press(KEY.enter, 'j', KEY.right);
+    assert.match(f.screen(), /about one/);
+    await f.press(KEY.left);
+    assert.doesNotMatch(f.screen(), /about one/);
+    assert.match(f.screen(), /bundle\//, 'still on the list, not back at the sources');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('a search opens the folders, since a match may be inside one', async () => {
+  const f = await nested();
+  try {
+    await f.press(KEY.enter, '/');
+    for (const ch of 'two') await f.press(ch);
+    await f.press(KEY.enter);
+    assert.match(f.screen(), /about two/, 'the match is shown wherever it lives');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});

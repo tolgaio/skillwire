@@ -28,6 +28,24 @@ npm run release-notes 0.0.2 > notes.md && gh release create v0.0.2 -F notes.md
 That pulls the section out and unwraps the paragraphs, leaving headings, lists,
 tables and fenced code alone.
 
+## Unreleased
+
+### Breaking
+
+- **An `only` list scoped to one kind now leaves the other kinds alone.**
+  `only` is a whitelist, so anything it did not name was dropped — including
+  whole kinds it never mentioned, which made `only: ["command:review"]` mean
+  "one command, and no skills or agents at all". Naming a kind is a statement
+  about that kind. One unscoped pattern still speaks for all of them.
+
+### Added
+
+- **Collections are folders in the interactive picker**, one collapsible row
+  each, with how much of the folder is selected. A source that keeps two
+  hundred skills in one directory was two hundred rows to scroll past.
+  `space`, `⏎`, `←` and `→` open and close them, and a search opens them all,
+  since a match may be inside one.
+
 ---
 
 ## 0.0.2 — 2026-09-03

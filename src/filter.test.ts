@@ -98,3 +98,54 @@ test('an empty filter array is not a filter', () => {
   const all = [a('one'), a('two')];
   assert.equal(selectArtifacts(all, wire({ only: [], exclude: [] })).length, 2);
 });
+
+test('an only list scoped to one kind leaves the other kinds alone', () => {
+  // `only` is a whitelist, so anything it did not name was dropped — including
+  // whole kinds it never mentioned. Naming a kind is a statement about that
+  // kind, not a decision to install nothing else.
+  const all = [a('keep', 'skill'), a('drop', 'skill'), a('cmd', 'command'), a('agt', 'agent')];
+  const got = selectArtifacts(all, wire({ only: ['skill:keep'] }));
+  assert.deepEqual(
+    got.map((x) => `${x.kind}:${x.id}`),
+    ['skill:keep', 'command:cmd', 'agent:agt'],
+  );
+});
+
+test('one unscoped pattern still speaks for every kind', () => {
+  const all = [a('keep', 'skill'), a('keep', 'command'), a('other', 'agent')];
+  const got = selectArtifacts(all, wire({ only: ['keep'] }));
+  assert.deepEqual(
+    got.map((x) => `${x.kind}:${x.id}`),
+    ['skill:keep', 'command:keep'],
+  );
+});
+
+test('scoping two kinds restricts both and spares the third', () => {
+  const all = [
+    a('yes', 'skill'),
+    a('no', 'skill'),
+    a('yes', 'command'),
+    a('no', 'command'),
+    a('untouched', 'agent'),
+  ];
+  const got = selectArtifacts(all, wire({ only: ['skill:yes', 'command:yes'] }));
+  assert.deepEqual(
+    got.map((x) => `${x.kind}:${x.id}`),
+    ['skill:yes', 'command:yes', 'agent:untouched'],
+  );
+});
+
+test('mixing a scoped and an unscoped pattern restricts everything', () => {
+  const all = [a('x', 'skill'), a('other', 'skill'), a('x', 'agent'), a('other', 'agent')];
+  const got = selectArtifacts(all, wire({ only: ['skill:x', 'x'] }));
+  assert.deepEqual(
+    got.map((x) => `${x.kind}:${x.id}`),
+    ['skill:x', 'agent:x'],
+  );
+});
+
+test('exclude is unaffected: it removes whatever it names, from any kind', () => {
+  const all = [a('x', 'skill'), a('x', 'command')];
+  const got = selectArtifacts(all, wire({ only: ['skill:x'], exclude: ['command:x'] }));
+  assert.deepEqual(got.map((x) => `${x.kind}:${x.id}`), ['skill:x']);
+});

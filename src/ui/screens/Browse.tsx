@@ -46,8 +46,17 @@ const NEXT: Record<Showing, Showing> = {
   unselected: 'all',
 };
 
-/** A kind heading, or one artifact. Headings are labels, not destinations. */
-type Entry = { header: string } | { artifact: Artifact };
+/**
+ * A kind heading, a collapsible folder, or one artifact.
+ *
+ * Headings are labels, not destinations. Folders are: a collection of two
+ * hundred skills is one row until you open it, which is the difference between
+ * a list you can read and a list you scroll past.
+ */
+type Entry =
+  | { header: string }
+  | { folder: string; kind: Kind; on: number; of: number; open: boolean }
+  | { artifact: Artifact };
 
 export function Browse({
   index,
@@ -66,6 +75,8 @@ export function Browse({
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [showing, setShowing] = useState<Showing>('all');
+  /** Folders opened by hand. A collection is a summary until asked otherwise. */
+  const [opened, setOpened] = useState<Set<string>>(new Set());
 
   /**
    * What the list is currently showing.
@@ -83,13 +94,32 @@ export function Browse({
     return a.id.toLowerCase().includes(q) || a.description.toLowerCase().includes(q);
   });
 
+  // A search is a reason to see everything that matched, wherever it lives.
+  const filtering = !!query.trim() || showing !== 'all';
   const entries: Entry[] = [];
   for (const kind of KINDS) {
     const of = matching.filter((a) => a.kind === kind);
     if (!of.length) continue;
     const on = of.filter((a) => isSelected(a, wire)).length;
     entries.push({ header: `${kind}s  ${on}/${of.length}` });
-    for (const a of of) entries.push({ artifact: a });
+
+    const loose = of.filter((a) => !a.group);
+    const folders = new Map<string, Artifact[]>();
+    for (const a of of) {
+      if (a.group) folders.set(a.group, [...(folders.get(a.group) ?? []), a]);
+    }
+    for (const a of loose) entries.push({ artifact: a });
+    for (const [folder, held] of [...folders].sort((x, y) => x[0].localeCompare(y[0]))) {
+      const open = filtering || opened.has(`${kind}/${folder}`);
+      entries.push({
+        folder,
+        kind,
+        open,
+        on: held.filter((a) => isSelected(a, wire)).length,
+        of: held.length,
+      });
+      if (open) for (const a of held) entries.push({ artifact: a });
+    }
   }
 
   // The list opens on a heading, so nudge past it rather than letting the
@@ -97,6 +127,7 @@ export function Browse({
   const at = clampToArtifact(entries, Math.min(cursor, Math.max(0, entries.length - 1)));
   const entry = entries[at];
   const current = entry && 'artifact' in entry ? entry.artifact : undefined;
+  const folder = entry && 'folder' in entry ? entry : undefined;
   const selected = artifacts.filter((a) => isSelected(a, wire)).length;
 
   useKeys(
@@ -116,11 +147,19 @@ export function Browse({
       if (where) {
         const next = moveCursor(where, at, entries.length, height - 2);
         if (next !== null) return setCursor(clampToArtifact(entries, next, next < at ? -1 : 1));
+        // On a folder, left and right close and open it rather than leaving.
+        if (folder && where === 'right' && !folder.open)
+          return toggleFolder(folder.kind, folder.folder);
+        if (folder && where === 'left' && folder.open)
+          return toggleFolder(folder.kind, folder.folder);
         if (where === 'left') return store.pop();
         return;
       }
 
-      if (input === ' ' || key.return) return tick();
+      if (input === ' ' || key.return) {
+        if (folder) return toggleFolder(folder.kind, folder.folder);
+        return tick();
+      }
 
       switch (input) {
         case '/':
@@ -150,12 +189,23 @@ export function Browse({
     { isActive: !searching && !store.help },
   );
 
+  function toggleFolder(kind: Kind, name: string): void {
+    const key = `${kind}/${name}`;
+    setOpened((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   /** Click: land on the row, and tick it — that is what a checkbox is for. */
   function pick(index: number): void {
     const target = entries[index];
-    if (!target || !('artifact' in target)) return;
+    if (!target) return;
     setCursor(index);
-    tick(target.artifact);
+    if ('folder' in target) return toggleFolder(target.kind, target.folder);
+    if ('artifact' in target) tick(target.artifact);
   }
 
   function tick(a: Artifact | undefined = current): void {
@@ -248,6 +298,22 @@ export function Browse({
             render={(e, here) =>
               'header' in e ? (
                 <Text dimColor>{e.header}</Text>
+              ) : 'folder' in e ? (
+                <>
+                  <Cell width={4}>
+                    <Text {...rowColour(here, true)}>{e.open ? '▾' : '▸'}</Text>
+                  </Cell>
+                  <Cell width={idWidth + 2}>
+                    <Text bold={here} {...rowColour(here)}>
+                      {e.folder}/
+                    </Text>
+                  </Cell>
+                  <Rest>
+                    <Text {...rowColour(here, true)}>
+                      {e.on}/{e.of} selected{e.open ? '' : ' — space to open'}
+                    </Text>
+                  </Rest>
+                </>
               ) : (
                 <>
                   <Cell width={4}>
@@ -328,10 +394,12 @@ function emptyReason(query: string, showing: Showing): string {
  *
  * Headings are labels, not destinations. The list also opens on one, so
  * without this the first space would land on a label and appear to do nothing.
+ * Folders are destinations — they open and close.
  */
 function clampToArtifact(entries: Entry[], index: number, dir = 1): number {
   if (!entries.length) return 0;
-  const isArtifact = (i: number): boolean => !!entries[i] && 'artifact' in entries[i]!;
+  const isArtifact = (i: number): boolean =>
+    !!entries[i] && !('header' in entries[i]!);
   const at = Math.max(0, Math.min(entries.length - 1, index));
   if (isArtifact(at)) return at;
   for (let i = at; i >= 0 && i < entries.length; i += dir) if (isArtifact(i)) return i;

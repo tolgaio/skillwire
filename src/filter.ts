@@ -38,10 +38,43 @@ export function matchesArtifact(a: Artifact, pattern: string): boolean {
   return matches(a.id, pattern);
 }
 
+/** The kind a pattern is scoped to, or null when it applies to all of them. */
+export function scopeOf(pattern: string): Kind | null {
+  const i = pattern.indexOf(':');
+  if (i <= 0) return null;
+  const kind = pattern.slice(0, i);
+  return KINDS.includes(kind as Kind) ? (kind as Kind) : null;
+}
+
+/**
+ * Which kinds an `only` list has an opinion about.
+ *
+ * `only` is a whitelist, so anything it does not name is dropped — and that
+ * used to include whole kinds it never mentioned. `only: ["command:review"]`
+ * meant "one command, and no skills or agents at all", which is not what
+ * anyone writing it meant: naming a kind is a statement about that kind.
+ *
+ * An unscoped pattern is still a statement about everything, so one of those
+ * puts every kind back in scope.
+ */
+function restricted(only: string[]): Set<Kind> | null {
+  const kinds = new Set<Kind>();
+  for (const pattern of only) {
+    const kind = scopeOf(pattern);
+    if (!kind) return null; // unscoped: every kind is restricted
+    kinds.add(kind);
+  }
+  return kinds;
+}
+
 export function selectArtifacts(all: Artifact[], wire: Wire): Artifact[] {
   let out = all;
-  if (wire.only?.length)
-    out = out.filter((a) => wire.only!.some((p) => matchesArtifact(a, p)));
+  if (wire.only?.length) {
+    const scope = restricted(wire.only);
+    out = out.filter(
+      (a) => (scope && !scope.has(a.kind)) || wire.only!.some((p) => matchesArtifact(a, p)),
+    );
+  }
   if (wire.exclude?.length)
     out = out.filter((a) => !wire.exclude!.some((p) => matchesArtifact(a, p)));
   return out;
