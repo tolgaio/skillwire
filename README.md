@@ -113,11 +113,14 @@ config file. Add sources, see what each one holds, tick what you want, install.
  tab kind  space tick  a all  n none  s showing  / search  f filters  ? keys
 ```
 
-A breadcrumb says where you are, a side panel carries the full description of
-whatever the cursor is on — the list has room for a line of it, and a skill's
-description is usually a paragraph saying when to use it — and **`?` shows every
-key** for the screen you are on. On a narrow terminal the side panel moves below
-the list.
+A breadcrumb says where you are, and **`?` shows every key** for the screen you
+are on.
+
+The side panel previews whatever the cursor is on: its description in full —
+the list has room for a line of it, and a skill's is usually a paragraph saying
+when to use it — and then the file itself, with enough markdown rendering to
+read it by. `p` puts the panel away when the list wants the width, and on a
+narrow terminal it moves below the list.
 
 ### Keys
 
@@ -139,7 +142,7 @@ SKILLWIRE_HIGHLIGHT=blue skillwire -i
 | where | keys |
 |---|---|
 | Sources | `a` add · `e` edit · `d` delete · `f` fetch · `r` re-read · `i` install · `D` dry run · `I` install all · `q` quit |
-| Browse | `tab`/`1`–`3` switch kind · `space` tick or open a folder · `a` all · `n` none · `v` invert · `s` showing · `/` search · `f` filters · `K` kinds · `i` install |
+| Browse | `tab`/`1`–`3` switch kind · `space` tick or open a folder · `a` all · `n` none · `v` invert · `s` showing · `p` preview · `/` search · `f` filters · `K` kinds · `i` install |
 | Filters | `o` add an `only` pattern · `x` add an `exclude` · `d` delete |
 | Form | type to edit · `⏎` next field · `←→` change · `space` toggle a target · `^s` save |
 | Anywhere | `?` keys · `m` mouse on/off · `q` quit |

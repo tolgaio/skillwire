@@ -67,8 +67,11 @@ export function List<T>({
     );
   }
 
-  const { slice, from } = windowOf(items, cursor, height);
+  // The position counter is a row of the list's own budget, not an extra one.
+  // Left to the caller to remember, it was forgotten, and the last artifact
+  // was drawn on top of whatever sat below the list.
   const more = items.length > height;
+  const { slice, from } = windowOf(items, cursor, more ? Math.max(1, height - 1) : height);
   const counts = countable ?? ((): boolean => true);
   const before = items.slice(0, from).filter(counts).length;
   const within = slice.filter(counts).length;

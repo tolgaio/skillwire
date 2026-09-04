@@ -2,6 +2,7 @@ import { TextInput } from '@inkjs/ui';
 import { Box, Text} from 'ink';
 import { useKeys } from '../useKeys.js';
 import { useState, type ReactNode } from 'react';
+import { useRegion } from '../mouse.js';
 import { KINDS, type Artifact, type Kind } from '../../artifact.js';
 import {
   blockingExclude,
@@ -11,9 +12,11 @@ import {
   toggle,
 } from '../../selection.js';
 import { Cell, Check, List, MARKS, Rest, rowColour } from '../components/List.js';
+import { Markdown } from '../components/Markdown.js';
 import { Tabs, tabFor, type Tab } from '../components/Tabs.js';
 import { Chip, Panel, Row } from '../components/chrome.js';
 import { moveCursor, nav } from '../keys.js';
+import { oneLine } from '../text.js';
 import { useStore } from '../store.js';
 
 export const BROWSE_KEYS: [string, string][] = [
@@ -22,6 +25,7 @@ export const BROWSE_KEYS: [string, string][] = [
   ['n', 'untick everything listed'],
   ['v', 'invert what is listed'],
   ['tab  1 2 3', 'skills, commands, agents'],
+  ['p', 'the preview panel, on or off'],
   ['s', 'show all / selected / unselected'],
   ['/', 'search names and descriptions'],
   ['f', 'edit the filter patterns'],
@@ -33,9 +37,9 @@ export const BROWSE_KEYS: [string, string][] = [
 export const BROWSE_HINTS: [string, string][] = [
   ['tab', 'kind'],
   ['space', 'tick'],
-  ['a', 'all'],
-  ['n', 'none'],
+  ['a/n', 'all/none'],
   ['s', 'showing'],
+  ['p', 'preview'],
   ['/', 'search'],
   ['f', 'filters'],
   ['i', 'install'],
@@ -66,7 +70,7 @@ const NEXT: Record<Showing, Showing> = {
 type Entry =
   | { header: string }
   | { folder: string; kind: Kind; on: number; of: number; open: boolean }
-  | { artifact: Artifact };
+  | { artifact: Artifact; inFolder?: boolean };
 
 export function Browse({
   index,
@@ -86,6 +90,7 @@ export function Browse({
   const [searching, setSearching] = useState(false);
   const [showing, setShowing] = useState<Showing>('all');
   const [tab, setTab] = useState<Kind | null>(null);
+  const [preview, setPreview] = useState(true);
   /** Folders opened by hand. A collection is a summary until asked otherwise. */
   const [opened, setOpened] = useState<Set<string>>(new Set());
 
@@ -110,13 +115,11 @@ export function Browse({
   });
 
   // What is left for the list once the panel's own furniture has its share:
-  // the tab bar and its margin, the position counter, the filter strip, and
-  // the search box when it is up. Counted here rather than guessed at, because
-  // one row too many has the last line drawn over the strip below it.
-  const rows = Math.max(
-    1,
-    height - 4 - (tabs.length > 1 ? 0 : 2) - (searching || query ? 1 : 0),
-  );
+  // the tab bar and its margin, the filter strip, and the search box when it
+  // is up. The list keeps its own position counter within this. Counted rather
+  // than guessed at, because one row too many draws the last line over the
+  // strip below it.
+  const rows = Math.max(1, height - 3 - (tabs.length > 1 ? 0 : 2) - (searching || query ? 1 : 0));
 
   /**
    * What the list is currently showing.
@@ -152,7 +155,7 @@ export function Browse({
       on: held.filter((a) => isSelected(a, wire)).length,
       of: held.length,
     });
-    if (open) for (const a of held) entries.push({ artifact: a });
+    if (open) for (const a of held) entries.push({ artifact: a, inFolder: true });
   }
 
   // The list opens on a heading, so nudge past it rather than letting the
@@ -204,6 +207,8 @@ export function Browse({
       switch (input) {
         case '/':
           return setSearching(true);
+        case 'p':
+          return setPreview((open) => !open);
         case 's':
           setShowing(NEXT[showing]);
           return setCursor(0);
@@ -272,7 +277,7 @@ export function Browse({
 
   // The side panel carries the full description, so the list can give more of
   // its width to ids once there is one.
-  const sideWidth = width >= 100 ? Math.min(46, Math.floor(width * 0.34)) : 0;
+  const sideWidth = preview && width >= 100 ? Math.min(56, Math.floor(width * 0.36)) : 0;
   const idWidth = Math.min(sideWidth ? 30 : 38, Math.max(14, ...matching.map((a) => a.id.length)));
 
   return (
@@ -332,24 +337,27 @@ export function Browse({
                     </Text>
                   </Cell>
                   <Rest>
-                    <Text {...rowColour(here, true)}>
+                    <Text wrap="truncate-end" {...rowColour(here, true)}>
                       {e.on}/{e.of} selected{e.open ? '' : ' — space to open'}
                     </Text>
                   </Rest>
                 </>
               ) : (
                 <>
+                  {/* Inside an open folder, indented and with the folder's own
+                      name taken off the front: the row already sits under it. */}
+                  {e.inFolder ? <Text> </Text> : null}
                   <Cell width={MARKS.on.length + 1}>
                     <Check on={isSelected(e.artifact, wire)} here={here} />
                   </Cell>
-                  <Cell width={idWidth + 2}>
+                  <Cell width={idWidth + (e.inFolder ? 1 : 2)}>
                     <Text bold={here} wrap="truncate" {...rowColour(here)}>
-                      {e.artifact.id}
+                      {oneLine(shortId(e.artifact))}
                     </Text>
                   </Cell>
                   <Rest>
                     <Text wrap="truncate-end" {...rowColour(here, true)}>
-                      {e.artifact.description || '(no description)'}
+                      {oneLine(e.artifact.description) || '(no description)'}
                     </Text>
                   </Rest>
                 </>
@@ -368,7 +376,14 @@ export function Browse({
           </Box>
         </Panel>
 
-        {sideWidth && current ? <Detail artifact={current} width={sideWidth} /> : null}
+        {sideWidth && current ? (
+          <Detail
+            artifact={current}
+            width={sideWidth}
+            height={height}
+            onClose={() => setPreview(false)}
+          />
+        ) : null}
       </Box>
 
       {!sideWidth && current ? (
@@ -383,32 +398,64 @@ export function Browse({
 }
 
 /**
- * The side panel.
+ * The preview panel.
  *
- * The list has room for one line of a description; a skill's is usually a
- * paragraph saying when to use it, which is exactly what decides the checkbox.
- * A column beside the list is the natural place for it, and is the thing a
- * row-by-row renderer could not do at all.
+ * The list has room for one line of a description; what decides a checkbox is
+ * usually the paragraph saying when to use the thing, and after that the file
+ * itself. Both are here, and `p` puts the panel away when the list wants the
+ * width more.
+ *
+ * Only the primary file is shown. A skill can carry a dozen, and a panel that
+ * tried to be a file browser would stop being a glance.
  */
-function Detail({ artifact, width }: { artifact: Artifact; width: number }): ReactNode {
+function Detail({
+  artifact,
+  width,
+  height,
+  onClose,
+}: {
+  artifact: Artifact;
+  width: number;
+  height: number;
+  onClose: () => void;
+}): ReactNode {
+  const ref = useRegion({ onClick: onClose });
+  const facts = [artifact.kind, `${artifact.files.length} file${artifact.files.length === 1 ? '' : 's'}`];
+  if (artifact.group) facts.push(artifact.group);
+
+  // The description wraps to a known width, so how many rows it will take is
+  // arithmetic rather than a guess, and what is left is the file's budget.
+  const column = Math.max(1, width - 4);
+  const description = oneLine(artifact.description);
+  const spent = 6 + (description ? Math.ceil(description.length / column) + 1 : 0);
+  const budget = Math.max(1, height - spent);
+
   return (
-    <Panel title={artifact.id} width={width} colour="cyan">
-      <Row label="kind" width={8}>
-        <Text dimColor>{artifact.kind}</Text>
-      </Row>
-      <Row label="files" width={8}>
-        <Text dimColor>{artifact.files.length}</Text>
-      </Row>
-      {artifact.group ? (
-        <Row label="group" width={8}>
-          <Text dimColor>{artifact.group}</Text>
-        </Row>
+    <Panel title={oneLine(artifact.id)} width={width} colour="cyan">
+      <Box flexShrink={0}>
+        <Text dimColor>{facts.join('  ·  ')}</Text>
+      </Box>
+      {artifact.description ? (
+        <Box flexShrink={0} marginTop={1}>
+          {/* The panel wraps it to the column; keeping the author's own line
+              breaks on top of that gives a ragged half-width paragraph. */}
+          <Text>{description}</Text>
+        </Box>
       ) : null}
-      <Box marginTop={1} flexGrow={1}>
-        <Text dimColor>{artifact.description || '(no description)'}</Text>
+      <Box flexShrink={0} marginTop={1}>
+        <Text dimColor>{'─'.repeat(Math.max(0, width - 4))}</Text>
+      </Box>
+      <Markdown text={artifact.body} width={column} lines={budget} />
+      <Box ref={ref} flexShrink={0} justifyContent="flex-end">
+        <Text dimColor>p ›</Text>
       </Box>
     </Panel>
   );
+}
+
+/** Inside a folder, the folder's own name is already on the row above. */
+function shortId(a: Artifact): string {
+  return a.group && a.id.startsWith(`${a.group}-`) ? a.id.slice(a.group.length + 1) : a.id;
 }
 
 /**

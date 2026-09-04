@@ -896,3 +896,137 @@ test('the strip still fits with the search box open', async () => {
     await rm(f.root, { recursive: true, force: true });
   }
 });
+
+// --- rows that must stay rows ----------------------------------------------
+
+test('a description written as a block scalar still occupies one row', async () => {
+  // The bug this answers: `description: |` keeps its line breaks, a renderer
+  // draws every one, one skill becomes six rows, and the list outgrows the
+  // panel — pushing its border and the strip below it off the screen.
+  const root = await mkdtemp(join(tmpdir(), 'skillwire-ink-'));
+  try {
+    const src = join(root, 'src');
+    for (const [id, description] of [
+      ['wordy', '|\n  first line\n  second line\n  third line\n  fourth line'],
+      ['plain', 'one line'],
+    ]) {
+      await mkdir(join(src, 'skills', id!), { recursive: true });
+      await writeFile(
+        join(src, 'skills', id!, 'SKILL.md'),
+        `---\nname: ${id}\ndescription: ${description}\n---\nbody\n`,
+      );
+    }
+    const path = join(root, 'c.json');
+    const config: Config = {
+      wires: [{ name: 'mine', source: { path: src }, targets: ['claude'] }],
+    };
+    await writeFile(path, JSON.stringify(config));
+    const app = render(
+      <MouseProvider>
+        <StoreProvider initialConfig={config} configPath={path} noFetch>
+          <App />
+        </StoreProvider>
+      </MouseProvider>,
+    );
+    await tick(180);
+    app.stdin.write(KEY.enter);
+    await tick(120);
+
+    const lines = (app.lastFrame() ?? '').split('\n');
+    const rows = lines.filter((l) => new RegExp(`[${MARKS.on}${MARKS.off}] `).test(l));
+    assert.equal(rows.length, 2, `one row each:\n${app.lastFrame()}`);
+    const wordy = rows.find((l) => l.includes('wordy'))!;
+    assert.match(wordy, /first line second line/, 'read as a sentence');
+    app.unmount();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('nothing escapes the panel when a folder is opened', async () => {
+  // What the list spilling out of its box looked like: rows drawn past the
+  // border, the strip somewhere in the middle of them.
+  const f = await nested();
+  try {
+    await f.press(KEY.enter, 'j', ' ');
+    const lines = f.screen().split('\n');
+    const border = lines.map((l) => l.startsWith('╰')).lastIndexOf(true);
+    assert.ok(border > 0, `no closing border:\n${f.screen()}`);
+    const opened = lines.slice(0, border).filter((l) => /about (one|two|three)/.test(l));
+    assert.ok(opened.length > 0, `the folder did not open:\n${f.screen()}`);
+    for (const line of lines.slice(border + 1)) {
+      assert.doesNotMatch(line, /about (one|two|three)/, `a row escaped:\n${f.screen()}`);
+    }
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('an open folder indents what is inside it, and drops its own name', async () => {
+  const f = await nested();
+  try {
+    await f.press(KEY.enter, 'j', ' ');
+    const lines = f.screen().split('\n');
+    const folder = lines.findIndex((l) => l.includes('bundle/'));
+    const child = lines.findIndex((l) => l.includes('about one'));
+    const at = (i: number): number =>
+      lines[i]!.search(new RegExp(`[${MARKS.on}${MARKS.off}▸▾]`));
+    assert.ok(at(child) > at(folder), `not indented:\n${f.screen()}`);
+    assert.doesNotMatch(lines[child]!, /bundle-one/, 'the folder name is on the row above');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('p closes the preview panel and opens it again', async () => {
+  const f = await fixture();
+  try {
+    await f.press(KEY.enter);
+    assert.match(f.screen(), /p ›/, 'the panel says how to close it');
+    await f.press('p');
+    assert.doesNotMatch(f.screen(), /p ›/);
+    assert.match(f.screen(), /The first skill/, 'the list is still there, wider');
+    await f.press('p');
+    assert.match(f.screen(), /p ›/);
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('the preview shows the file, not only the description', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'skillwire-ink-'));
+  try {
+    const src = join(root, 'src');
+    await mkdir(join(src, 'skills', 'documented'), { recursive: true });
+    await writeFile(
+      join(src, 'skills', 'documented', 'SKILL.md'),
+      '---\nname: documented\ndescription: what it does\n---\n\n# How it works\n\n- first step\n- second step\n',
+    );
+    const path = join(root, 'c.json');
+    const config: Config = {
+      wires: [{ name: 'mine', source: { path: src }, targets: ['claude'] }],
+    };
+    await writeFile(path, JSON.stringify(config));
+    const app = render(
+      <MouseProvider>
+        <StoreProvider initialConfig={config} configPath={path} noFetch>
+          <App />
+        </StoreProvider>
+      </MouseProvider>,
+    );
+    await tick(180);
+    app.stdin.write(KEY.enter);
+    await tick(140);
+    const screen = app.lastFrame() ?? '';
+    assert.match(screen, /what it does/, 'the description');
+    assert.match(screen, /How it works/, 'and the file below it');
+    assert.match(screen, /first step/);
+    assert.doesNotMatch(screen, /^#/m, 'rendered, not printed raw');
+    app.unmount();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

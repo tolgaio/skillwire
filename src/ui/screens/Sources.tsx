@@ -8,6 +8,7 @@ import type { SourceConfig, Wire } from '../../config.js';
 import { Cell, List, Rest, rowColour } from '../components/List.js';
 import { Panel, Row } from '../components/chrome.js';
 import { moveCursor, nav } from '../keys.js';
+import { oneLine } from '../text.js';
 import { useStore } from '../store.js';
 
 export const SOURCES_KEYS: [string, string][] = [
@@ -178,7 +179,7 @@ export function Sources({
                     </Cell>
                     <Cell width={Math.max(18, width - nameWidth - 42)}>
                       <Text wrap="truncate" {...rowColour(here, true)}>
-                        {describeSource(w.source)}
+                        {oneLine(describeSource(w.source))}
                       </Text>
                     </Cell>
                     <Cell width={12}>

@@ -40,6 +40,15 @@ tables and fenced code alone.
 
 ### Added
 
+- **The preview panel shows the file, not only the description**, with enough
+  markdown rendering to read a SKILL.md by: headings, lists and fenced code.
+  Only the primary file — a skill can carry a dozen, and a panel that tried to
+  be a file browser would stop being a glance. `p` puts it away when the list
+  wants the width.
+
+- **An open folder indents what is inside it** and drops its own name from each
+  row, which the row above already carries.
+
 - **The kind tabs carry the colour and the filters do not.** The open tab is
   filled with its own colour, the rest are dim, which is the whole of what
   makes a row of words read as tabs. What the filters are moved to a grey strip
@@ -108,6 +117,16 @@ necessarily one you laid out. **`paths`** narrows the scan to part of a source.
 - Colour switches off when output is not a terminal, and honours `NO_COLOR`.
 
 ### Fixed
+
+- **A description written as a YAML block scalar broke the layout.** It keeps
+  its line breaks, and the picker drew every one: a single skill became six
+  rows, the list outgrew its panel, and the border and the filter strip below
+  it were pushed off the screen. Anything that has to occupy one row is now
+  collapsed to one.
+
+- **The preview dropped lines out of the middle of a file.** Its rows were
+  shrinkable, so a block taller than the panel had the layout squeeze rows out
+  rather than cut the tail — a file rendered with pieces missing from it.
 
 - **YAML block scalars in frontmatter were dropped.** A skill written as
   `description: |` or `description: >` lost its description entirely.
