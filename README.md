@@ -188,7 +188,7 @@ round.
 
 ### Ticking a box is a filter edit
 
-The checkboxes are a view of [`only` and `exclude`](#filtering), not a second
+The checkboxes are a view of [the filters](#filtering), not a second
 list living somewhere else. Ticking makes the smallest edit that produces the
 result you asked for, so a glob you wrote survives being near a box you clicked:
 with `exclude: ["skill:vendored-*"]`, unticking one unrelated skill adds one
@@ -208,7 +208,7 @@ Two consequences worth knowing:
 
 ## Filtering
 
-Three independent filters, applied in this order: **kinds → only → exclude**.
+Four filters, applied in this order: **kinds → only → exclude → include**.
 
 ### By kind
 
@@ -233,7 +233,16 @@ skillwire install --kind skill --kind agent
 "exclude": ["*-draft", "experimental-*"]
 ```
 
-`only` runs first and is a whitelist; `exclude` then removes from what survives. A pattern with no `*` must match the id exactly.
+`only` runs first and is a whitelist; `exclude` then removes from what survives; `include` puts back whatever it names, whatever the other two said. A pattern with no `*` must match the id exactly.
+
+**`only` scoped to one kind leaves the other kinds alone.** `only: ["command:review"]` restricts commands and says nothing about skills or agents. One unscoped pattern speaks for all of them.
+
+**`include` is how you keep one thing out of an excluded collection.** `exclude` has the last word, so without it, keeping a single skill out of a pattern covering two hundred meant giving up the pattern:
+
+```json
+"exclude": ["skill:vendored-*"],
+"include": ["skill:vendored-pdf"]
+```
 
 ### Scoping a pattern to one kind
 
