@@ -861,3 +861,38 @@ test('clicking a tab opens it', async () => {
     await rm(f.root, { recursive: true, force: true });
   }
 });
+
+test('the filter strip sits under the list and never over it', async () => {
+  // One row too many for the list and its last line is drawn on top of the
+  // strip below it, which reads as corrupted output rather than a layout bug.
+  const f = await fixture({ prefix: 'p', exclude: ['skill:gamma'] });
+  try {
+    await f.press(KEY.enter);
+    const lines = f.screen().split('\n');
+    const strip = lines.findIndex((l) => l.includes('prefix p'));
+    assert.notEqual(strip, -1, f.screen());
+    assert.doesNotMatch(lines[strip]!, marked('alpha'), 'an artifact is on the strip');
+    const last = lines.findIndex((l) => marked('beta').test(l));
+    assert.ok(last < strip, 'the list comes first');
+    assert.match(lines[strip + 1]!, /╰/, 'and the strip is the last row of the panel');
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('the strip still fits with the search box open', async () => {
+  const f = await fixture({ prefix: 'p' });
+  try {
+    await f.press(KEY.enter, '/');
+    for (const ch of 'a') await f.press(ch);
+    await f.press(KEY.enter);
+    const lines = f.screen().split('\n');
+    const strip = lines.findIndex((l) => l.includes('prefix p'));
+    assert.notEqual(strip, -1, f.screen());
+    assert.match(lines[strip + 1]!, /╰/);
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});

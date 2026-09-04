@@ -1,4 +1,4 @@
-import { Badge, TextInput } from '@inkjs/ui';
+import { TextInput } from '@inkjs/ui';
 import { Box, Text} from 'ink';
 import { useKeys } from '../useKeys.js';
 import { useState, type ReactNode } from 'react';
@@ -12,7 +12,7 @@ import {
 } from '../../selection.js';
 import { Cell, Check, List, MARKS, Rest, rowColour } from '../components/List.js';
 import { Tabs, tabFor, type Tab } from '../components/Tabs.js';
-import { Panel, Row } from '../components/chrome.js';
+import { Chip, Panel, Row } from '../components/chrome.js';
 import { moveCursor, nav } from '../keys.js';
 import { useStore } from '../store.js';
 
@@ -41,6 +41,13 @@ export const BROWSE_HINTS: [string, string][] = [
   ['i', 'install'],
   ['?', 'keys'],
 ];
+
+/** A colour per kind, so a tab is recognisable before it is read. */
+const KIND_COLOUR: Record<Kind, string> = {
+  skill: 'cyan',
+  command: 'magenta',
+  agent: 'yellow',
+};
 
 type Showing = 'all' | 'selected' | 'unselected';
 const NEXT: Record<Showing, Showing> = {
@@ -96,10 +103,20 @@ export function Browse({
     return {
       key: kind,
       label: `${kind}s`,
+      colour: KIND_COLOUR[kind],
       on: of.filter((a) => isSelected(a, wire)).length,
       of: of.length,
     };
   });
+
+  // What is left for the list once the panel's own furniture has its share:
+  // the tab bar and its margin, the position counter, the filter strip, and
+  // the search box when it is up. Counted here rather than guessed at, because
+  // one row too many has the last line drawn over the strip below it.
+  const rows = Math.max(
+    1,
+    height - 4 - (tabs.length > 1 ? 0 : 2) - (searching || query ? 1 : 0),
+  );
 
   /**
    * What the list is currently showing.
@@ -168,7 +185,7 @@ export function Browse({
 
       const where = nav(input, key);
       if (where) {
-        const next = moveCursor(where, at, entries.length, height - 2);
+        const next = moveCursor(where, at, entries.length, rows);
         if (next !== null) return setCursor(clampToArtifact(entries, next, next < at ? -1 : 1));
         // On a folder, left and right close and open it rather than leaving.
         if (folder && where === 'right' && !folder.open)
@@ -290,35 +307,10 @@ export function Browse({
               setCursor(0);
             }}
           />
-          {/* Always one line, even with nothing in it. Ticking the first
-              artifact adds a filter badge, and a bar that appears only then
-              would shove the whole list down a row under the pointer. */}
-          <Box flexShrink={0} height={1} overflow="hidden">
-            {showing !== 'all' ? (
-              <Box marginRight={1} flexShrink={0}>
-                <Badge color="cyan">showing {showing}</Badge>
-              </Box>
-            ) : null}
-            {wire.prefix ? (
-              <Box marginRight={1} flexShrink={0}>
-                <Badge color="magenta">prefix {wire.prefix}</Badge>
-              </Box>
-            ) : null}
-            {wire.exclude?.length ? (
-              <Box marginRight={1} flexShrink={0}>
-                <Badge color="yellow">exclude {summarise(wire.exclude)}</Badge>
-              </Box>
-            ) : null}
-            {wire.only?.length ? (
-              <Box marginRight={1} flexShrink={0}>
-                <Badge color="green">only {summarise(wire.only)}</Badge>
-              </Box>
-            ) : null}
-          </Box>
           <List
             items={entries}
             cursor={at}
-            height={height - 3}
+            height={rows}
             label="artifact"
             empty={emptyReason(query, showing, active)}
             countable={(e) => 'artifact' in e}
@@ -364,6 +356,16 @@ export function Browse({
               )
             }
           />
+          {/* Under the list, not over it. What the filters are is worth a
+              glance, not the first thing read. Always one line even when there
+              is nothing to say, so that setting the first filter cannot shove
+              every row down under the pointer. */}
+          <Box flexShrink={0} height={1} overflow="hidden">
+            {showing !== 'all' ? <Chip>showing {showing}</Chip> : null}
+            {wire.prefix ? <Chip>prefix {wire.prefix}</Chip> : null}
+            {wire.exclude?.length ? <Chip>exclude {summarise(wire.exclude)}</Chip> : null}
+            {wire.only?.length ? <Chip>only {summarise(wire.only)}</Chip> : null}
+          </Box>
         </Panel>
 
         {sideWidth && current ? <Detail artifact={current} width={sideWidth} /> : null}

@@ -101,13 +101,13 @@ config file. Add sources, see what each one holds, tick what you want, install.
 ╰────────────────────────────────────────────────────────────────────────────╯
 ╭──────────────────────────────────────────╮╭────────────────────────────────╮
 │ mine 268 of 500 selected                 ││ pdf-export                     │
-│ 1 skills 27/259  2 commands 11/238       ││ kind    skill                  │
+│  SKILLS 27/259  2 commands 11/238        ││ kind    skill                  │
 │                                          ││ files   4                      │
-│  prefix p   exclude skill:vendored-*     ││                                │
 │ ▸ ● pdf-export        Turn a document…   ││ Turn a document into a tagged, │
 │   ● tone-check        Flag hedging an…   ││ accessible PDF, with the       │
 │   ▸ vendored/         0/232 selected     ││ heading structure and alt text │
 │   1–18 of 259                            ││ a screen reader needs.         │
+│  prefix p   exclude skill:vendored-*     ││                                │
 ╰──────────────────────────────────────────╯╰────────────────────────────────╯
  ✓ saved
  tab kind  space tick  a all  n none  s showing  / search  f filters  ? keys

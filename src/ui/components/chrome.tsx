@@ -82,6 +82,24 @@ export function Footer({
 }
 
 /**
+ * A quiet chip, for stating a fact.
+ *
+ * Not `Badge`: that paints black on the colour it is given, which is right for
+ * something demanding attention and unreadable in grey. These say what the
+ * filters are, which is worth a glance and not a colour.
+ */
+export function Chip({ children }: { children: ReactNode }): ReactNode {
+  return (
+    <Box marginRight={1} flexShrink={0}>
+      <Text backgroundColor="blackBright" color="white">
+        {' '}
+        {children}{' '}
+      </Text>
+    </Box>
+  );
+}
+
+/**
  * A box that answers to the mouse.
  *
  * Without an onClick it is a plain Box, so nothing pays for the region

@@ -40,6 +40,11 @@ tables and fenced code alone.
 
 ### Added
 
+- **The kind tabs carry the colour and the filters do not.** The open tab is
+  filled with its own colour, the rest are dim, which is the whole of what
+  makes a row of words read as tabs. What the filters are moved to a grey strip
+  along the bottom of the panel: worth a glance, not the first thing read.
+
 - **A filled circle marks a picked row**, against a hollow one for the rest.
   Scanning three hundred rows for what is on is a job for contrast, and fill is
   caught at a glance where `[x]` against `[ ]` has to be read. Not emoji: those

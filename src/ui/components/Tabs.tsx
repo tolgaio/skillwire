@@ -1,3 +1,4 @@
+import { Badge } from '@inkjs/ui';
 import { Box, Text } from 'ink';
 import type { ReactNode } from 'react';
 import { useRegion } from '../mouse.js';
@@ -17,6 +18,8 @@ export interface Tab {
   /** How much of this tab is picked, shown beside its name. */
   on?: number;
   of?: number;
+  /** The tab's own colour, worn when it is the one you are looking at. */
+  colour?: string;
 }
 
 export function Tabs({
@@ -44,6 +47,13 @@ export function Tabs({
   );
 }
 
+/**
+ * One tab.
+ *
+ * The open one is filled with its own colour and the rest are dim text, which
+ * is the whole of what makes a row of words read as tabs — a page you are on
+ * and pages you are not.
+ */
 function TabLabel({
   tab,
   index,
@@ -56,18 +66,21 @@ function TabLabel({
   onSelect: () => void;
 }): ReactNode {
   const ref = useRegion({ onClick: onSelect });
+  const count = tab.of === undefined ? '' : ` ${tab.on}/${tab.of}`;
   return (
-    <Box ref={ref} marginRight={3}>
-      <Text dimColor>{index + 1} </Text>
-      <Text bold={active} underline={active} color={active ? 'cyan' : undefined} dimColor={!active}>
-        {tab.label}
-      </Text>
-      {tab.of !== undefined ? (
-        <Text dimColor={!active} color={active ? 'cyan' : undefined}>
+    <Box ref={ref} marginRight={1}>
+      {active ? (
+        <Badge color={tab.colour ?? 'cyan'}>
+          {tab.label}
+          {count}
+        </Badge>
+      ) : (
+        <Text dimColor>
           {' '}
-          {tab.on}/{tab.of}
+          {index + 1} {tab.label}
+          {count}{' '}
         </Text>
-      ) : null}
+      )}
     </Box>
   );
 }
