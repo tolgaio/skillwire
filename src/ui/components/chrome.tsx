@@ -89,13 +89,17 @@ export function Footer({
  * filters are, which is worth a glance and not a colour.
  */
 export function Chip({ children }: { children: ReactNode }): ReactNode {
+  // One Text run, gap included, rather than a Box with a margin: a margin
+  // between two background-coloured runs is a cell nothing owns, and something
+  // else in the layout was landing a character in it.
   return (
-    <Box marginRight={1} flexShrink={0}>
+    <Text>
       <Text backgroundColor="blackBright" color="white">
         {' '}
         {children}{' '}
       </Text>
-    </Box>
+      {'  '}
+    </Text>
   );
 }
 

@@ -59,3 +59,31 @@ test('the budget is a limit, not a suggestion', async () => {
   assert.match(out, /line 0/);
   assert.doesNotMatch(out, /line 50/);
 });
+
+test('a long line is wrapped, not cut off', async () => {
+  // The panel is narrow and there is no scrolling, so a sentence that ends in
+  // an ellipsis every time says nothing at all.
+  const sentence = 'the quick brown fox jumps over the lazy dog and keeps on running';
+  const out = await render(sentence, 10, 24);
+  assert.doesNotMatch(out, /…/);
+  const text = out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join(' ');
+  assert.equal(text, sentence, out);
+});
+
+test('a word longer than the column is broken rather than lost', async () => {
+  const out = await render('x'.repeat(50), 10, 20);
+  const joined = out.replace(/\s/g, '');
+  assert.equal(joined.length, 50, out);
+});
+
+test('a wrapped bullet lines up under its own text', async () => {
+  const out = await render('- one two three four five six seven eight', 10, 20);
+  const rows = out.split('\n').filter((l) => l.trim());
+  assert.match(rows[0]!, /·/);
+  assert.doesNotMatch(rows[1]!, /·/, 'the marker is not repeated');
+  assert.ok(rows[1]!.startsWith('  '), `continuation is indented: ${JSON.stringify(rows[1])}`);
+});

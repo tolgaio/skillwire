@@ -64,14 +64,34 @@ test('a glob someone wrote survives ticking an unrelated artifact', () => {
   assert.deepEqual(ids(all, w), ['mine']);
 });
 
-test('an artifact inside an excluded glob cannot be ticked, and says which glob', () => {
-  // exclude has the last word and the language cannot say "except this one".
-  // Adding it to `only` would restrict the wire to that one artifact and then
-  // exclude it anyway, selecting nothing — so the tick is refused instead.
+test('an artifact inside an excluded glob is put back by name', () => {
+  // exclude has the last word, so this used to be refused outright. `include`
+  // is matched after it and names one artifact, leaving the pattern that
+  // covers the other two hundred exactly as it was.
   const all = [a('vendored-x'), a('vendored-y'), a('mine')];
   const w = wire({ exclude: ['skill:vendored-*'] });
-  assert.equal(blockingExclude(all[0]!, w), 'skill:vendored-*');
-  assert.deepEqual(ids(all, toggle(w, all[0]!, true)), ['mine'], 'nothing silently changed');
+  assert.equal(blockingExclude(all[0]!, w), 'skill:vendored-*', 'a pattern is holding it out');
+
+  const ticked = toggle(w, all[0]!, true);
+  assert.deepEqual(ids(all, ticked), ['vendored-x', 'mine']);
+  assert.deepEqual(ticked.exclude, ['skill:vendored-*'], 'the pattern is untouched');
+  assert.deepEqual(ticked.include, ['skill:vendored-x']);
+});
+
+test('unticking it again takes the include back out', () => {
+  const all = [a('vendored-x'), a('mine')];
+  const w = wire({ exclude: ['skill:vendored-*'] });
+  const back = toggle(toggle(w, all[0]!, true), all[0]!, false);
+  assert.deepEqual(ids(all, back), ['mine']);
+  assert.equal(back.include, undefined, 'and leaves no empty list behind');
+});
+
+test('compaction leaves a wire with an include alone', () => {
+  // An include only exists to override a pattern; rewriting the filters as a
+  // plain list would throw the pattern away and change what the wire means.
+  const all = [a('one'), a('two'), a('three')];
+  const w = wire({ exclude: ['skill:t*'], include: ['skill:two'] });
+  assert.deepEqual(compact(w, all), w);
 });
 
 test('an artifact an only list merely omits can be ticked, because only is a union', () => {

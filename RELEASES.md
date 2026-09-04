@@ -116,7 +116,30 @@ necessarily one you laid out. **`paths`** narrows the scan to part of a source.
   removed.
 - Colour switches off when output is not a terminal, and honours `NO_COLOR`.
 
+### Added
+
+- **`include`, a third filter, matched after `exclude`.** Keeping one skill out
+  of an excluded collection of two hundred used to mean giving up the pattern
+  that excludes the other hundred and ninety-nine — `exclude` had the last word
+  and the language could not say "except this one". Ticking such an artifact in
+  the picker now names it and leaves the pattern alone.
+
 ### Fixed
+
+- **Opening a folder scrolled the list.** The window was centred on the cursor,
+  so a collection of two hundred arriving under it moved every row above it.
+  It is sticky now, and moves only when the cursor would otherwise leave it.
+
+- **Escape did nothing while typing a filter pattern or a search**, and the text
+  field does not handle it either, so there was no way to abandon one once
+  started.
+
+- **The position moved the list it was describing.** It was a row that appeared
+  as soon as a list outgrew its window, pushing everything above it up. It sits
+  in the filter strip now, which is always there.
+
+- **The preview cut every line off** rather than wrapping it, in a panel with
+  no scrolling. It wraps, and the panel is wider.
 
 - **A description written as a YAML block scalar broke the layout.** It keeps
   its line breaks, and the picker drew every one: a single skill became six

@@ -32,12 +32,19 @@ export function selectedIds(all: Artifact[], wire: Wire): Set<string> {
   return new Set(selectArtifacts(all, wire).map((a) => `${a.kind}:${a.id}`));
 }
 
-function withFilters(wire: Wire, only: string[], exclude: string[]): Wire {
+function withFilters(
+  wire: Wire,
+  only: string[],
+  exclude: string[],
+  include: string[] = wire.include ?? [],
+): Wire {
   const out: Wire = { ...wire };
   if (only.length) out.only = only;
   else delete out.only;
   if (exclude.length) out.exclude = exclude;
   else delete out.exclude;
+  if (include.length) out.include = include;
+  else delete out.include;
   return out;
 }
 
@@ -54,6 +61,15 @@ export function blockingExclude(a: Artifact, wire: Wire): string | undefined {
   return (wire.exclude ?? []).find((p) => !exact(p) && matchesArtifact(a, p));
 }
 
+/** Which patterns a wire has, for a screen that wants to say so. */
+export function patternsOf(wire: Wire): { field: 'only' | 'exclude' | 'include'; pattern: string }[] {
+  return [
+    ...(wire.only ?? []).map((pattern) => ({ field: 'only' as const, pattern })),
+    ...(wire.exclude ?? []).map((pattern) => ({ field: 'exclude' as const, pattern })),
+    ...(wire.include ?? []).map((pattern) => ({ field: 'include' as const, pattern })),
+  ];
+}
+
 /**
  * Tick or untick one artifact, changing as little as possible.
  *
@@ -67,10 +83,13 @@ export function toggle(wire: Wire, a: Artifact, on: boolean): Wire {
   const names = literals(a);
   let only = wire.only ?? [];
   let exclude = wire.exclude ?? [];
+  let include = wire.include ?? [];
 
   if (on) {
     exclude = exclude.filter((p) => !(exact(p) && names.includes(p)));
   } else {
+    // Whatever put it back, take it back out first.
+    include = include.filter((p) => !(exact(p) && names.includes(p)));
     const kept = only.filter((p) => !(exact(p) && names.includes(p)));
     // An `only` list that empties out stops meaning "just these" and starts
     // meaning "everything", which would select far more than was ticked. Keep
@@ -78,15 +97,18 @@ export function toggle(wire: Wire, a: Artifact, on: boolean): Wire {
     if (kept.length || !only.length) only = kept;
   }
 
-  const candidate = withFilters(wire, only, exclude);
+  const candidate = withFilters(wire, only, exclude, include);
   if (isSelected(a, candidate) === on) return candidate;
 
-  if (!on) return withFilters(wire, only, [...exclude, `${a.kind}:${a.id}`]);
+  if (!on) return withFilters(wire, only, [...exclude, `${a.kind}:${a.id}`], include);
 
-  const widened = withFilters(wire, [...only, `${a.kind}:${a.id}`], exclude);
-  // Adding to `only` while an exclude glob still matches would restrict the
-  // whole wire to this one artifact and then drop it — selecting nothing.
-  return isSelected(a, widened) ? widened : candidate;
+  const widened = withFilters(wire, [...only, `${a.kind}:${a.id}`], exclude, include);
+  if (isSelected(a, widened)) return widened;
+
+  // Still out, so a pattern is holding it out and no amount of `only` will
+  // help: `exclude` has the last word. `include` is matched after it, and
+  // names one artifact without touching the pattern that covers the rest.
+  return withFilters(wire, only, exclude, [...include, `${a.kind}:${a.id}`]);
 }
 
 /**
@@ -97,6 +119,9 @@ export function toggle(wire: Wire, a: Artifact, on: boolean): Wire {
  * a pattern someone wrote is worth more than a shorter file.
  */
 export function compact(wire: Wire, all: Artifact[]): Wire {
+  // An include only exists to override a pattern, so a wire that has one is
+  // not a wire whose filters can be rewritten as a plain list.
+  if (wire.include?.length) return wire;
   const patterns = [...(wire.only ?? []), ...(wire.exclude ?? [])];
   if (patterns.some((p) => !exact(p))) return wire;
 

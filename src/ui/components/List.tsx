@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink';
-import type { ReactNode } from 'react';
-import { windowOf } from '../keys.js';
+import { useState, type ReactNode } from 'react';
+import { clampOffset } from '../keys.js';
 import { useRegion } from '../mouse.js';
 
 /**
@@ -43,6 +43,7 @@ export function List<T>({
   empty,
   label = 'item',
   countable,
+  offset: controlled,
   onPick,
   onScroll,
 }: {
@@ -54,6 +55,8 @@ export function List<T>({
   label?: string;
   /** Which rows the position counter counts. Group headings are not rows. */
   countable?: (item: T) => boolean;
+  /** Where the window sits. Omit and the list keeps its own. */
+  offset?: number;
   /** A click on a row. */
   onPick?: (index: number) => void;
   /** The wheel, in rows. */
@@ -67,15 +70,12 @@ export function List<T>({
     );
   }
 
-  // The position counter is a row of the list's own budget, not an extra one.
-  // Left to the caller to remember, it was forgotten, and the last artifact
-  // was drawn on top of whatever sat below the list.
-  const more = items.length > height;
-  const { slice, from } = windowOf(items, cursor, more ? Math.max(1, height - 1) : height);
-  const counts = countable ?? ((): boolean => true);
-  const before = items.slice(0, from).filter(counts).length;
-  const within = slice.filter(counts).length;
-  const total = items.filter(counts).length;
+  // Derived during render, which React supports for exactly this: state that
+  // is a function of props but has to remember what it was.
+  const [own, setOwn] = useState(0);
+  const from = clampOffset(controlled ?? own, cursor, items.length, height);
+  if (controlled === undefined && from !== own) setOwn(from);
+  const slice = items.slice(from, from + height);
 
   return (
     <Box flexDirection="column" flexGrow={1}>
@@ -102,16 +102,33 @@ export function List<T>({
           </Row>
         );
       })}
-      {more && within < total ? (
-        <Box flexShrink={0}>
-          <Text dimColor>
-            {'  '}
-            {before + 1}–{before + within} of {total}
-          </Text>
-        </Box>
-      ) : null}
     </Box>
   );
+}
+
+/**
+ * Which slice of a list is on screen, and where in the whole it sits.
+ *
+ * Returned rather than drawn, so the position can be stated somewhere that is
+ * always there. Drawn by the list itself it was a row that appeared the moment
+ * a list grew past the window — and every row above it moved up to make space,
+ * so opening a folder scrolled the list under the cursor.
+ */
+export function listWindow<T>(
+  items: T[],
+  offset: number,
+  height: number,
+  countable?: (item: T) => boolean,
+): { from: number; first: number; last: number; total: number } {
+  const counts = countable ?? ((): boolean => true);
+  const before = items.slice(0, offset).filter(counts).length;
+  const within = items.slice(offset, offset + height).filter(counts).length;
+  return {
+    from: offset,
+    first: before + 1,
+    last: before + within,
+    total: items.filter(counts).length,
+  };
 }
 
 /** One row, and the rectangle a click on it lands in. */

@@ -55,19 +55,18 @@ export function moveCursor(
 }
 
 /**
- * The window of a long list to actually render.
+ * Where the window sits, given where it sat before.
  *
- * Ink lays out whatever it is given, so handing it five hundred rows would
- * paint five hundred rows and let the terminal scroll them away. The list keeps
- * its own window instead, and the cursor pulls it along.
+ * Sticky, not centred. A window centred on the cursor moves every row on
+ * screen whenever the list changes length — opening a folder of two hundred
+ * scrolled everything above it out from under the cursor. This only moves when
+ * the cursor would otherwise leave it, which is what a text editor does and
+ * what people expect.
  */
-export function windowOf<T>(
-  items: T[],
-  cursor: number,
-  height: number,
-): { slice: T[]; from: number } {
-  if (items.length <= height) return { slice: items, from: 0 };
-  const half = Math.floor(height / 2);
-  const from = Math.max(0, Math.min(items.length - height, cursor - half));
-  return { slice: items.slice(from, from + height), from };
+export function clampOffset(offset: number, cursor: number, total: number, height: number): number {
+  const max = Math.max(0, total - height);
+  let out = Math.min(Math.max(0, offset), max);
+  if (cursor < out) out = cursor;
+  if (cursor >= out + height) out = cursor - height + 1;
+  return Math.max(0, Math.min(out, max));
 }

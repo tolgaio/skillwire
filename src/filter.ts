@@ -77,5 +77,15 @@ export function selectArtifacts(all: Artifact[], wire: Wire): Artifact[] {
   }
   if (wire.exclude?.length)
     out = out.filter((a) => !wire.exclude!.some((p) => matchesArtifact(a, p)));
+
+  // Matched last, so it can put back what a pattern took: keeping one skill
+  // out of an excluded collection of two hundred should not mean giving up
+  // the pattern that excludes the other hundred and ninety-nine.
+  if (wire.include?.length) {
+    const back = all.filter(
+      (a) => !out.includes(a) && wire.include!.some((p) => matchesArtifact(a, p)),
+    );
+    out = all.filter((a) => out.includes(a) || back.includes(a));
+  }
   return out;
 }

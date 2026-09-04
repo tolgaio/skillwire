@@ -143,7 +143,7 @@ SKILLWIRE_HIGHLIGHT=blue skillwire -i
 |---|---|
 | Sources | `a` add · `e` edit · `d` delete · `f` fetch · `r` re-read · `i` install · `D` dry run · `I` install all · `q` quit |
 | Browse | `tab`/`1`–`3` switch kind · `space` tick or open a folder · `a` all · `n` none · `v` invert · `s` showing · `p` preview · `/` search · `f` filters · `K` kinds · `i` install |
-| Filters | `o` add an `only` pattern · `x` add an `exclude` · `d` delete |
+| Filters | `o` add an `only` · `x` add an `exclude` · `k` add an `include` · `d` delete |
 | Form | type to edit · `⏎` next field · `←→` change · `space` toggle a target · `^s` save |
 | Anywhere | `?` keys · `m` mouse on/off · `q` quit |
 
@@ -200,9 +200,9 @@ Two consequences worth knowing:
   500 writes `only` with 3 entries, not `exclude` with 497. It flips to
   whichever form is shorter, but only when the source has no globs — a pattern
   you wrote is worth more than a shorter file.
-- **An artifact inside an excluded glob cannot be ticked.** `exclude` has the
-  last word and the filter language has no way to say "except this one", so the
-  UI names the pattern and sends you to `f` rather than silently rewriting it.
+- **Ticking something a pattern excludes writes an `include`.** That list is
+  matched after `exclude`, so one artifact is named and the pattern covering
+  the rest of its collection is left exactly as it was.
 
 `f` edits the patterns directly, with a live count of what each one matches.
 

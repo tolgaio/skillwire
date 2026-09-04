@@ -278,12 +278,16 @@ test('the picker refuses to leave a source with nothing selected', async () => {
   }
 });
 
-test('an artifact an exclude glob covers reports the glob instead of failing silently', async () => {
+test('ticking something a pattern excludes just works, and keeps the pattern', async () => {
+  // Fiddling with filters to get one skill out of an excluded collection is
+  // not an interaction anyone wants. The tick names it; the pattern stands.
   const f = await fixture({ exclude: ['skill:b*'] });
   try {
     await f.press(KEY.enter, 'j', ' ');
-    await f.expect(/excluded by "skill:b\*"/);
-    assert.deepEqual((await f.saved()).wires[0]!.exclude, ['skill:b*'], 'nothing was rewritten');
+    const saved = await f.saved((c) => !!c.wires[0]!.include);
+    assert.deepEqual(saved.wires[0]!.include, ['skill:beta']);
+    assert.deepEqual(saved.wires[0]!.exclude, ['skill:b*'], 'the pattern is untouched');
+    await f.expect(/include skill:beta/, 'the strip says an include is in play');
   } finally {
     f.done();
     await rm(f.root, { recursive: true, force: true });
@@ -381,7 +385,7 @@ test('escape steps back out one screen at a time', async () => {
     await f.press(KEY.enter);
     assert.match(f.screen(), /The first skill/);
     await f.press('f');
-    assert.match(f.screen(), /add only/);
+    assert.match(f.screen(), /› filters/);
     await f.press(KEY.escape);
     assert.match(f.screen(), /The first skill/);
     await f.press(KEY.escape);
@@ -561,7 +565,7 @@ test('clicking a breadcrumb goes back to it', async () => {
   const f = await fixture();
   try {
     await f.press(KEY.enter, 'f');
-    assert.match(f.screen(), /add only/);
+    assert.match(f.screen(), /› filters/);
     const line = f.screen().split('\n')[1]!;
     await f.press(clickAt(line.indexOf('sources') + 2, 2));
     assert.match(f.screen(), /SELECTED/, 'back at the source list');
@@ -1028,5 +1032,60 @@ test('the preview shows the file, not only the description', async () => {
     app.unmount();
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('opening a folder does not move the rows above it', async () => {
+  // The window used to centre on the cursor, so a folder of two hundred
+  // arriving under it scrolled everything above out from under the eye.
+  const f = await nested();
+  try {
+    await f.press(KEY.enter, 'j'); // onto the folder, wherever that scrolls to
+    const rowOfLoose = (): number =>
+      f.screen().split('\n').findIndex((l) => l.includes('loose-one'));
+    const before = rowOfLoose();
+    await f.press(' ');
+    // The folder's own row changes — it is open now. Nothing above it should.
+    assert.equal(rowOfLoose(), before, `the list moved:\n${f.screen()}`);
+  } finally {
+    f.done();
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test('the position is in the strip, not a row that comes and goes', async () => {
+  const many = await mkdtemp(join(tmpdir(), 'skillwire-ink-'));
+  try {
+    const src = join(many, 'src');
+    for (let i = 0; i < 60; i++) {
+      await mkdir(join(src, 'skills', `s${String(i).padStart(2, '0')}`), { recursive: true });
+      await writeFile(
+        join(src, 'skills', `s${String(i).padStart(2, '0')}`, 'SKILL.md'),
+        `---\nname: s${i}\ndescription: number ${i}\n---\nb\n`,
+      );
+    }
+    const path = join(many, 'c.json');
+    const config: Config = {
+      wires: [{ name: 'mine', source: { path: src }, targets: ['claude'] }],
+    };
+    await writeFile(path, JSON.stringify(config));
+    const app = render(
+      <MouseProvider>
+        <StoreProvider initialConfig={config} configPath={path} noFetch>
+          <App />
+        </StoreProvider>
+      </MouseProvider>,
+    );
+    await tick(200);
+    app.stdin.write(KEY.enter);
+    await tick(140);
+    const lines = (app.lastFrame() ?? '').split('\n');
+    // The count appears in the panel title too, so look for the range form.
+    const strip = lines.findIndex((l) => /\d+–\d+ of 60/.test(l));
+    assert.notEqual(strip, -1, `no position:\n${app.lastFrame()}`);
+    assert.match(lines[strip + 1]!, /╰/, 'it is the last row of the panel, with the filters');
+    app.unmount();
+  } finally {
+    await rm(many, { recursive: true, force: true });
   }
 });

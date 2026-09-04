@@ -53,33 +53,39 @@ export function Markdown({ text, width, lines }: { text: string; width: number; 
 
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (heading) {
-      rendered.push(
-        row(
-          rendered.length,
-          <Text bold color={heading[1]!.length === 1 ? 'cyan' : undefined}>
-            {wrapTo(heading[2]!, width)}
-          </Text>,
-        ),
-      );
+      for (const part of wrapTo(heading[2]!, width)) {
+        rendered.push(
+          row(
+            rendered.length,
+            <Text bold color={heading[1]!.length === 1 ? 'cyan' : undefined}>
+              {part}
+            </Text>,
+          ),
+        );
+      }
       continue;
     }
 
     const bullet = /^(\s*)[-*+]\s+(.*)$/.exec(line);
     if (bullet) {
-      rendered.push(
-        row(
-          rendered.length,
-          <Text dimColor>
-            {bullet[1]}
-            {'· '}
-            {wrapTo(bullet[2]!, width - bullet[1]!.length - 2)}
-          </Text>,
-        ),
-      );
+      const indent = `${bullet[1]}  `;
+      wrapTo(bullet[2]!, width - indent.length).forEach((part, i) => {
+        rendered.push(
+          row(
+            rendered.length,
+            <Text dimColor>
+              {i ? indent : `${bullet[1]}· `}
+              {part}
+            </Text>,
+          ),
+        );
+      });
       continue;
     }
 
-    rendered.push(row(rendered.length, <Text dimColor>{wrapTo(line, width)}</Text>));
+    for (const part of wrapTo(line, width)) {
+      rendered.push(row(rendered.length, <Text dimColor>{part}</Text>));
+    }
   }
 
   return (
@@ -89,11 +95,34 @@ export function Markdown({ text, width, lines }: { text: string; width: number; 
   );
 }
 
-/** One row's worth, with the markers that would render as noise taken out. */
-function wrapTo(s: string, width: number): string {
+/**
+ * A line, as the rows it takes.
+ *
+ * Wrapped rather than cut: the panel is narrow, there is no scrolling, and a
+ * sentence ending in an ellipsis every time says nothing. Long words break
+ * rather than overflow.
+ */
+function wrapTo(s: string, width: number): string[] {
   const plain = s
     .replace(/`([^`]+)`/g, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/^\s*>\s?/, '');
-  return plain.length > width ? `${plain.slice(0, Math.max(1, width - 1))}…` : plain;
+  if (width < 4) return [plain];
+
+  const out: string[] = [];
+  let line = '';
+  for (const word of plain.split(/\s+/).filter(Boolean)) {
+    if (!line) line = word;
+    else if (line.length + 1 + word.length <= width) line += ` ${word}`;
+    else {
+      out.push(line);
+      line = word;
+    }
+    while (line.length > width) {
+      out.push(line.slice(0, width));
+      line = line.slice(width);
+    }
+  }
+  if (line || !out.length) out.push(line);
+  return out;
 }

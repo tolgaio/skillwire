@@ -2,7 +2,7 @@ import { Badge, TextInput } from '@inkjs/ui';
 import { Box, Text} from 'ink';
 import { useKeys } from '../useKeys.js';
 import { useState, type ReactNode } from 'react';
-import { patternCounts } from '../../selection.js';
+import { patternCounts, patternsOf } from '../../selection.js';
 import { Cell, List, rowColour } from '../components/List.js';
 import { Panel } from '../components/chrome.js';
 import { moveCursor, nav } from '../keys.js';
@@ -11,22 +11,26 @@ import { useStore } from '../store.js';
 export const FILTERS_KEYS: [string, string][] = [
   ['o', 'add an only pattern'],
   ['x', 'add an exclude pattern'],
+  ['k', 'add an include — matched last, beats exclude'],
   ['d', 'delete the pattern'],
 ];
 
 export const FILTERS_HINTS: [string, string][] = [
-  ['o', 'add only'],
-  ['x', 'add exclude'],
+  ['o', 'only'],
+  ['x', 'exclude'],
+  ['k', 'include'],
   ['d', 'delete'],
   ['?', 'keys'],
   ['esc', 'back'],
 ];
 
-type Field = 'only' | 'exclude';
-interface Entry {
-  field: Field;
-  pattern: string;
-}
+type Field = 'only' | 'exclude' | 'include';
+
+const COLOUR: Record<Field, string> = {
+  only: 'green',
+  exclude: 'yellow',
+  include: 'cyan',
+};
 
 export function Filters({ index, height }: { index: number; height: number }): ReactNode {
   const store = useStore();
@@ -35,15 +39,19 @@ export function Filters({ index, height }: { index: number; height: number }): R
   const [cursor, setCursor] = useState(0);
   const [adding, setAdding] = useState<Field | null>(null);
 
-  const entries: Entry[] = [
-    ...(wire.only ?? []).map((pattern) => ({ field: 'only' as const, pattern })),
-    ...(wire.exclude ?? []).map((pattern) => ({ field: 'exclude' as const, pattern })),
-  ];
+  const entries = patternsOf(wire);
   const at = Math.min(cursor, Math.max(0, entries.length - 1));
   const counts = patternCounts(wire, artifacts);
 
   useKeys(
     (input, key) => {
+      // Escape has to reach here even while a pattern is being typed: the
+      // text field does not handle it, so switching this handler off entirely
+      // left no way out of the input at all.
+      if (adding) {
+        if (key.escape) setAdding(null);
+        return;
+      }
       if (key.escape) return store.pop();
       const where = nav(input, key);
       if (where) {
@@ -54,6 +62,7 @@ export function Filters({ index, height }: { index: number; height: number }): R
       }
       if (input === 'o') return setAdding('only');
       if (input === 'x') return setAdding('exclude');
+      if (input === 'k') return setAdding('include');
       if (input === 'd') {
         const e = entries[at];
         if (!e) return;
@@ -65,7 +74,7 @@ export function Filters({ index, height }: { index: number; height: number }): R
         });
       }
     },
-    { isActive: !adding && !store.help },
+    { isActive: !store.help },
   );
 
   return (
@@ -83,7 +92,7 @@ export function Filters({ index, height }: { index: number; height: number }): R
             return (
               <>
                 <Cell width={10}>
-                  <Text color={e.field === 'only' ? 'green' : 'yellow'} bold>
+                  <Text color={COLOUR[e.field]} bold>
                     {e.field}
                   </Text>
                 </Cell>
@@ -101,7 +110,7 @@ export function Filters({ index, height }: { index: number; height: number }): R
         />
         {adding ? (
           <Box marginTop={1} flexShrink={0}>
-            <Badge color={adding === 'only' ? 'green' : 'yellow'}>{adding}</Badge>
+            <Badge color={COLOUR[adding]}>{adding}</Badge>
             <Text> </Text>
             <TextInput
               placeholder="pattern, e.g. skill:vendored-*"
@@ -120,9 +129,11 @@ export function Filters({ index, height }: { index: number; height: number }): R
       </Panel>
       <Box paddingX={1} flexShrink={0} flexDirection="column">
         <Text dimColor>
-          only keeps what matches, exclude then removes. * is a wildcard, and a kind prefix
+          only keeps what matches, exclude then removes, include puts back. * is a wildcard,
         </Text>
-        <Text dimColor>scopes a pattern to it — skill:vendored-* leaves commands alone.</Text>
+        <Text dimColor>
+          and a kind prefix scopes a pattern — skill:vendored-* leaves commands alone.
+        </Text>
       </Box>
     </Box>
   );

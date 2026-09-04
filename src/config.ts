@@ -70,6 +70,14 @@ export interface Wire {
   only?: string[];
   /** Never install ids matching these patterns. `*` is a wildcard. */
   exclude?: string[];
+  /**
+   * Put these back, whatever `exclude` says. Matched last.
+   *
+   * Without it, one artifact inside an excluded collection could not be had at
+   * all: `exclude` has the last word, and the only way to keep a single skill
+   * out of a pattern covering two hundred was to stop using the pattern.
+   */
+  include?: string[];
 }
 
 export interface Config {

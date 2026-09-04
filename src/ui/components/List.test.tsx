@@ -53,12 +53,25 @@ test('the rows stay put as the cursor moves', async () => {
   assert.deepEqual(strip(first), strip(last));
 });
 
-test('a list longer than the window is cut to it, and says so', async () => {
+test('a list longer than the window is cut to it', async () => {
   const many = Array.from({ length: 40 }, (_, i) => `item-${String(i).padStart(2, '0')}`);
   const lines = await frameOf(0, many);
   assert.ok(lines.some((l) => l.includes('item-00')));
   assert.ok(!lines.some((l) => l.includes('item-30')), 'the window has to bound it');
-  assert.ok(lines.some((l) => /of 40/.test(l)));
+});
+
+test('the window reports where it sits, rather than drawing it', async () => {
+  // Drawn by the list, the position was a row that appeared as soon as a list
+  // outgrew its window — and every row above moved up to make space, so
+  // opening a folder scrolled the list out from under the cursor.
+  const { listWindow } = await import('./List.js');
+  const many = Array.from({ length: 40 }, (_, i) => i);
+  assert.deepEqual(
+    (({ first, last, total }) => ({ first, last, total }))(listWindow(many, 0, 10)),
+    { first: 1, last: 10, total: 40 },
+  );
+  assert.equal(listWindow(many, 39, 10).last, 40);
+  assert.equal(listWindow([1, 2], 0, 10).total, 2, 'a short list still reports itself');
 });
 
 test('the two markers are the same width, so columns cannot drift', async () => {

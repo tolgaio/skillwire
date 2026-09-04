@@ -149,3 +149,41 @@ test('exclude is unaffected: it removes whatever it names, from any kind', () =>
   const got = selectArtifacts(all, wire({ only: ['skill:x'], exclude: ['command:x'] }));
   assert.deepEqual(got.map((x) => `${x.kind}:${x.id}`), ['skill:x']);
 });
+
+test('include puts back what exclude took', () => {
+  // One artifact inside an excluded collection could not be had at all:
+  // exclude has the last word, so keeping a single skill out of a pattern
+  // covering two hundred meant giving up the pattern.
+  const all = [a('vendored-one'), a('vendored-two'), a('mine')];
+  const got = selectArtifacts(
+    all,
+    wire({ exclude: ['skill:vendored-*'], include: ['skill:vendored-one'] }),
+  );
+  assert.deepEqual(got.map((x) => x.id), ['vendored-one', 'mine']);
+});
+
+test('include is matched last, so an exclude cannot undo it', () => {
+  const all = [a('one'), a('two')];
+  const got = selectArtifacts(all, wire({ exclude: ['*'], include: ['skill:one'] }));
+  assert.deepEqual(got.map((x) => x.id), ['one']);
+});
+
+test('include reaches past only as well', () => {
+  const all = [a('kept'), a('other')];
+  const got = selectArtifacts(all, wire({ only: ['skill:kept'], include: ['skill:other'] }));
+  assert.deepEqual(got.map((x) => x.id).sort(), ['kept', 'other']);
+});
+
+test('include keeps the order the source gave', () => {
+  const all = [a('a1'), a('b1'), a('c1')];
+  const got = selectArtifacts(all, wire({ exclude: ['b1'], include: ['b1'] }));
+  assert.deepEqual(got.map((x) => x.id), ['a1', 'b1', 'c1']);
+});
+
+test('an include naming nothing changes nothing', () => {
+  const all = [a('one')];
+  assert.deepEqual(
+    selectArtifacts(all, wire({ include: ['skill:nope'] })).map((x) => x.id),
+    ['one'],
+  );
+});

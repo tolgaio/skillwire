@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Key } from 'ink';
-import { moveCursor, nav, windowOf } from './keys.js';
+import { clampOffset, moveCursor, nav } from './keys.js';
 
 const key = (over: Partial<Key> = {}): Key =>
   ({
@@ -57,22 +57,27 @@ test('movement clamps to the ends of the list', () => {
   assert.equal(moveCursor('down', 0, 0, 5), null, 'an empty list has nowhere to go');
 });
 
-test('a list that fits is shown whole', () => {
-  const items = [1, 2, 3];
-  assert.deepEqual(windowOf(items, 0, 10), { slice: items, from: 0 });
+test('a list that fits is not scrolled', () => {
+  assert.equal(clampOffset(0, 0, 3, 10), 0);
+  assert.equal(clampOffset(5, 2, 3, 10), 0, 'and an offset it does not need is dropped');
 });
 
-test('a long list is windowed around the cursor', () => {
-  // Ink lays out whatever it is given, so handing it five hundred rows would
-  // paint five hundred and let the terminal scroll the top away.
-  const items = Array.from({ length: 100 }, (_, i) => i);
-  assert.deepEqual(windowOf(items, 50, 10).slice, [45, 46, 47, 48, 49, 50, 51, 52, 53, 54]);
-  assert.equal(windowOf(items, 50, 10).from, 45);
+test('the window stays put while the cursor is inside it', () => {
+  // Centred on the cursor, every row on screen moved whenever the list changed
+  // length: opening a folder of two hundred scrolled everything above it out
+  // from under the cursor.
+  assert.equal(clampOffset(40, 45, 100, 10), 40);
+  assert.equal(clampOffset(40, 49, 100, 10), 40, 'right up to the last visible row');
+});
+
+test('it moves only as far as it must to keep the cursor', () => {
+  assert.equal(clampOffset(40, 50, 100, 10), 41, 'one past the bottom, one row down');
+  assert.equal(clampOffset(40, 39, 100, 10), 39, 'one before the top, one row up');
+  assert.equal(clampOffset(40, 90, 100, 10), 81, 'a jump takes it straight there');
 });
 
 test('the window stops at both ends rather than running off', () => {
-  const items = Array.from({ length: 100 }, (_, i) => i);
-  assert.equal(windowOf(items, 0, 10).from, 0);
-  assert.equal(windowOf(items, 99, 10).from, 90);
-  assert.equal(windowOf(items, 99, 10).slice.length, 10);
+  assert.equal(clampOffset(0, 0, 100, 10), 0);
+  assert.equal(clampOffset(95, 99, 100, 10), 90);
+  assert.equal(clampOffset(-5, 0, 100, 10), 0, 'and refuses a nonsense offset');
 });

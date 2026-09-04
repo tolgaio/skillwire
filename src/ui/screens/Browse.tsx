@@ -5,17 +5,16 @@ import { useState, type ReactNode } from 'react';
 import { useRegion } from '../mouse.js';
 import { KINDS, type Artifact, type Kind } from '../../artifact.js';
 import {
-  blockingExclude,
   compact,
   isSelected,
   setSelection,
   toggle,
 } from '../../selection.js';
-import { Cell, Check, List, MARKS, Rest, rowColour } from '../components/List.js';
+import { Cell, Check, List, listWindow, MARKS, Rest, rowColour } from '../components/List.js';
 import { Markdown } from '../components/Markdown.js';
 import { Tabs, tabFor, type Tab } from '../components/Tabs.js';
 import { Chip, Panel, Row } from '../components/chrome.js';
-import { moveCursor, nav } from '../keys.js';
+import { clampOffset, moveCursor, nav } from '../keys.js';
 import { oneLine } from '../text.js';
 import { useStore } from '../store.js';
 
@@ -91,6 +90,7 @@ export function Browse({
   const [showing, setShowing] = useState<Showing>('all');
   const [tab, setTab] = useState<Kind | null>(null);
   const [preview, setPreview] = useState(true);
+  const [offset, setOffset] = useState(0);
   /** Folders opened by hand. A collection is a summary until asked otherwise. */
   const [opened, setOpened] = useState<Set<string>>(new Set());
 
@@ -119,7 +119,7 @@ export function Browse({
   // is up. The list keeps its own position counter within this. Counted rather
   // than guessed at, because one row too many draws the last line over the
   // strip below it.
-  const rows = Math.max(1, height - 3 - (tabs.length > 1 ? 0 : 2) - (searching || query ? 1 : 0));
+  const rows = Math.max(1, height - 2 - (tabs.length > 1 ? 0 : 2) - (searching || query ? 1 : 0));
 
   /**
    * What the list is currently showing.
@@ -168,6 +168,16 @@ export function Browse({
 
   useKeys(
     (input, key) => {
+      // As in the filter editor: the search box does not handle escape, so
+      // this has to, or there is no way to abandon a search once started.
+      if (searching) {
+        if (key.escape) {
+          setQuery('');
+          setSearching(false);
+          setCursor(0);
+        }
+        return;
+      }
       if (key.escape) {
         if (query || showing !== 'all') {
           // First escape drops the view filters, the next leaves the screen.
@@ -231,7 +241,7 @@ export function Browse({
           return void store.install(index, true);
       }
     },
-    { isActive: !searching && !store.help },
+    { isActive: !store.help },
   );
 
   function toggleFolder(kind: Kind, name: string): void {
@@ -257,10 +267,10 @@ export function Browse({
     if (!a) return;
     const current = a;
     const on = isSelected(current, wire);
-    const blocked = !on && blockingExclude(current, wire);
-    if (blocked) {
-      return store.say(`excluded by "${blocked}" — press f to edit that pattern`, 'warn');
-    }
+    // No longer refused, and no longer explained. Ticking something a pattern
+    // excludes adds it to `include`, which is matched after `exclude` — one
+    // artifact named without touching the pattern covering the rest. The strip
+    // says an include exists, which outlasts any note this could print.
     if (on && selected === 1) {
       return store.say('a source with nothing selected installs nothing', 'warn');
     }
@@ -277,7 +287,12 @@ export function Browse({
 
   // The side panel carries the full description, so the list can give more of
   // its width to ids once there is one.
-  const sideWidth = preview && width >= 100 ? Math.min(56, Math.floor(width * 0.36)) : 0;
+  const sideWidth = preview && width >= 100 ? Math.min(76, Math.floor(width * 0.42)) : 0;
+  // The same offset the list renders from, so the position in the strip is
+  // the position on screen rather than a second opinion about it.
+  const from = clampOffset(offset, at, entries.length, rows);
+  if (from !== offset) setOffset(from);
+  const window = listWindow(entries, from, rows, (e) => 'artifact' in e);
   const idWidth = Math.min(sideWidth ? 30 : 38, Math.max(14, ...matching.map((a) => a.id.length)));
 
   return (
@@ -319,6 +334,7 @@ export function Browse({
             label="artifact"
             empty={emptyReason(query, showing, active)}
             countable={(e) => 'artifact' in e}
+            offset={from}
             onPick={pick}
             onScroll={(d) =>
               setCursor((c) => clampToArtifact(entries, Math.max(0, Math.min(entries.length - 1, c + d * 3)), d))
@@ -369,9 +385,19 @@ export function Browse({
               is nothing to say, so that setting the first filter cannot shove
               every row down under the pointer. */}
           <Box flexShrink={0} height={1} overflow="hidden">
+            {/* The position lives here rather than under the list, where it
+                was a row that appeared as soon as a list outgrew the window —
+                and every row above it moved up to make space, so opening a
+                folder scrolled the list out from under the cursor. */}
+            {window.total > window.last - window.first + 1 ? (
+              <Chip>
+                {window.first}–{window.last} of {window.total}
+              </Chip>
+            ) : null}
             {showing !== 'all' ? <Chip>showing {showing}</Chip> : null}
             {wire.prefix ? <Chip>prefix {wire.prefix}</Chip> : null}
             {wire.exclude?.length ? <Chip>exclude {summarise(wire.exclude)}</Chip> : null}
+            {wire.include?.length ? <Chip>include {summarise(wire.include)}</Chip> : null}
             {wire.only?.length ? <Chip>only {summarise(wire.only)}</Chip> : null}
           </Box>
         </Panel>
