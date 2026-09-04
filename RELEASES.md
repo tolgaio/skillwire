@@ -28,49 +28,50 @@ npm run release-notes 0.0.2 > notes.md && gh release create v0.0.2 -F notes.md
 That pulls the section out and unwraps the paragraphs, leaving headings, lists,
 tables and fenced code alone.
 
-## Unreleased
+## 0.0.3 — 2026-09-04
 
-### Breaking
-
-- **An `only` list scoped to one kind now leaves the other kinds alone.**
-  `only` is a whitelist, so anything it did not name was dropped — including
-  whole kinds it never mentioned, which made `only: ["command:review"]` mean
-  "one command, and no skills or agents at all". Naming a kind is a statement
-  about that kind. One unscoped pattern still speaks for all of them.
+Mostly the interactive picker, which now looks and behaves like something you
+would leave open.
 
 ### Added
 
-- **The preview panel shows the file, not only the description**, with enough
-  markdown rendering to read a SKILL.md by: headings, lists and fenced code.
-  Only the primary file — a skill can carry a dozen, and a panel that tried to
-  be a file browser would stop being a glance. `p` puts it away when the list
-  wants the width.
+**Skills, commands and agents are tabs** — each counted, one listed at a time,
+`tab` to cycle or `1`–`3` to jump. **A collection is a folder**: one collapsible
+row rather than two hundred, indented when opened. Together they turn a source
+of five hundred into a page you can read.
 
-- **An open folder indents what is inside it** and drops its own name from each
-  row, which the row above already carries.
+**The preview panel shows the file**, not only the description, with enough
+markdown rendering to read a SKILL.md by. `[` and `]` scroll it, as does the
+wheel, and `p` puts it away when the list wants the width.
 
-- **The kind tabs carry the colour and the filters do not.** The open tab is
-  filled with its own colour, the rest are dim, which is the whole of what
-  makes a row of words read as tabs. What the filters are moved to a grey strip
-  along the bottom of the panel: worth a glance, not the first thing read.
+**`include`, a third filter, matched after `exclude`.** Keeping one skill out of
+an excluded collection of two hundred used to mean giving up the pattern that
+excludes the other hundred and ninety-nine. Ticking such an artifact now names
+it and leaves the pattern alone.
 
-- **A filled circle marks a picked row**, against a hollow one for the rest.
-  Scanning three hundred rows for what is on is a job for contrast, and fill is
-  caught at a glance where `[x]` against `[ ]` has to be read. Not emoji: those
-  are two cells wide, terminals disagree about whether they really are, and a
-  marker whose width is a matter of opinion pulls every column after it out of
-  line. `SKILLWIRE_ASCII` falls back to brackets.
+A filled circle marks a picked row, the open tab carries its own colour, and the
+filters moved to a grey strip along the bottom.
 
-- **Skills, commands and agents are tabs in the interactive picker**, each
-  counted, one listed at a time. They are three different things that happen to
-  share a repo, and interleaved, "how many commands does this hold" meant
-  scrolling and counting. `tab` cycles, `1`–`3` jump, and a tab can be clicked.
-  A source holding one kind shows no tab bar.
+### Changed
 
-- **Collections are folders in the picker**, one collapsible row each, with how
-  much of the folder is selected. A source that keeps two hundred skills in one
-  directory was two hundred rows to scroll past. `space`, `⏎`, `←` and `→` open
-  and close them, and a search opens them all, since a match may be inside one.
+- **An `only` list scoped to one kind leaves the other kinds alone.** `only` is
+  a whitelist, so anything it did not name was dropped — including whole kinds
+  it never mentioned, which made `only: ["command:review"]` mean "one command,
+  and no skills or agents at all". Naming a kind is a statement about that kind.
+  One unscoped pattern still speaks for all of them.
+
+### Fixed
+
+- **A description written as a YAML block scalar broke the layout.** It keeps
+  its line breaks, and every one was drawn: one skill became six rows, the list
+  outgrew its panel, and the border and the strip below it were pushed off the
+  screen.
+- **Opening a folder scrolled the list.** The window was centred on the cursor,
+  so a collection arriving under it moved every row above. It is sticky now.
+- **Escape did nothing while typing a filter pattern or a search.** The text
+  field does not handle it either, so there was no way to abandon one.
+- **The preview cut every line off** rather than wrapping it, and dropped lines
+  out of the middle of long files.
 
 ---
 
@@ -116,49 +117,7 @@ necessarily one you laid out. **`paths`** narrows the scan to part of a source.
   removed.
 - Colour switches off when output is not a terminal, and honours `NO_COLOR`.
 
-### Added
-
-- **The preview scrolls.** `[` and `]` move it a line, the wheel three, and it
-  says where in the file it is. Brackets rather than shifted arrows: whether a
-  terminal reports shift with an arrow is up to the terminal, and where it does
-  not, the keystroke meant for the preview moves the list instead. Shift and an
-  arrow work too, where they arrive. Moving to another artifact
-  starts at the top of its file rather than partway down where the last one was
-  left. The description scrolls with the file — fixed above it, a long one took
-  the whole panel and left the file nowhere to be.
-
-- **`include`, a third filter, matched after `exclude`.** Keeping one skill out
-  of an excluded collection of two hundred used to mean giving up the pattern
-  that excludes the other hundred and ninety-nine — `exclude` had the last word
-  and the language could not say "except this one". Ticking such an artifact in
-  the picker now names it and leaves the pattern alone.
-
 ### Fixed
-
-- **Opening a folder scrolled the list.** The window was centred on the cursor,
-  so a collection of two hundred arriving under it moved every row above it.
-  It is sticky now, and moves only when the cursor would otherwise leave it.
-
-- **Escape did nothing while typing a filter pattern or a search**, and the text
-  field does not handle it either, so there was no way to abandon one once
-  started.
-
-- **The position moved the list it was describing.** It was a row that appeared
-  as soon as a list outgrew its window, pushing everything above it up. It sits
-  in the filter strip now, which is always there.
-
-- **The preview cut every line off** rather than wrapping it, in a panel with
-  no scrolling. It wraps, and the panel is wider.
-
-- **A description written as a YAML block scalar broke the layout.** It keeps
-  its line breaks, and the picker drew every one: a single skill became six
-  rows, the list outgrew its panel, and the border and the filter strip below
-  it were pushed off the screen. Anything that has to occupy one row is now
-  collapsed to one.
-
-- **The preview dropped lines out of the middle of a file.** Its rows were
-  shrinkable, so a block taller than the panel had the layout squeeze rows out
-  rather than cut the tail — a file rendered with pieces missing from it.
 
 - **YAML block scalars in frontmatter were dropped.** A skill written as
   `description: |` or `description: >` lost its description entirely.
@@ -173,6 +132,8 @@ necessarily one you laid out. **`paths`** narrows the scan to part of a source.
 - **Node 22 is the minimum**, up from 20, which reached end of life in April.
 - Artifacts installed before this release have no prune record, so they cannot
   be pruned automatically. Remove them once by hand.
+
+---
 
 ---
 
